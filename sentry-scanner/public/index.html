@@ -32,7 +32,21 @@
     padding: 16px 16px 12px;
   }
   .brand-row svg { width: 24px; height: 24px; }
-  .brand-row h1 { font-family: var(--disp); font-weight: 700; font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+  .brand-row h1 {
+    font-family: var(--disp); font-weight: 800; font-size: 17px; margin: 0;
+    letter-spacing: 0.04em;
+    background: linear-gradient(90deg, #FFB84D, var(--sol-a), var(--sol-b));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 10px rgba(255,61,104,0.35));
+  }
+  @keyframes flicker {
+    0%, 100% { opacity: 1; transform: scaleY(1); }
+    25% { opacity: 0.85; transform: scaleY(1.04) translateY(-0.3px); }
+    50% { opacity: 0.95; transform: scaleY(0.97); }
+    75% { opacity: 0.9; transform: scaleY(1.02); }
+  }
+  .flame-path { animation: flicker 2.4s ease-in-out infinite; transform-origin: 12px 9px; }
+  .logo-glow { filter: drop-shadow(0 0 6px rgba(255,61,104,0.55)); }
 
   .chain-status { display: flex; gap: 8px; padding: 0 16px 12px; }
   .chip {
@@ -211,7 +225,7 @@
 <div class="app">
   <div class="sidebar">
     <div class="brand-row">
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg class="logo-glow" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="fireGrad" x1="4" y1="20" x2="20" y2="2" gradientUnits="userSpaceOnUse">
             <stop offset="0%" stop-color="#8B2FD9"/>
@@ -225,7 +239,8 @@
         <path d="M12 6.3V20.7" stroke="url(#fireGrad)" stroke-width="1" opacity="0.55"/>
         <path d="M5.3 10.5H18.7M5.3 16.5H18.7" stroke="url(#fireGrad)" stroke-width="1" opacity="0.55"/>
         <!-- flame on top -->
-        <path d="M12 1C12 1 9 4.2 9 6.6C9 8.2 10.3 9.4 12 9.4C13.7 9.4 15 8.2 15 6.6C15 5.6 14.3 4.5 13.7 3.7C13.7 4.4 13.3 5 12.7 5.2C13 4.2 12.6 2.3 12 1Z" fill="url(#fireGrad)"/>
+        <path class="flame-path" d="M12 1C12 1 9 4.2 9 6.6C9 8.2 10.3 9.4 12 9.4C13.7 9.4 15 8.2 15 6.6C15 5.6 14.3 4.5 13.7 3.7C13.7 4.4 13.3 5 12.7 5.2C13 4.2 12.6 2.3 12 1Z" fill="url(#fireGrad)"/>
+        <path class="flame-path" style="animation-delay:0.4s;" d="M8.3 4.2C8.3 4.2 7 6 7 7.3C7 8.2 7.7 8.9 8.6 8.9C9.5 8.9 10.2 8.2 10.2 7.3C10.2 6.7 9.9 6.2 9.5 5.7C9.5 6.1 9.3 6.4 9 6.5C9.1 5.9 8.9 4.9 8.3 4.2Z" fill="url(#fireGrad)" opacity="0.85"/>
       </svg>
       <h1>SENTRY</h1>
     </div>
@@ -458,7 +473,7 @@
         <div class="section">
           <h3>Trade (beta)</h3>
           <div class="trade-panel">
-            <div class="trade-warning">⚠ Beta — test with a small amount first. Sentry never sees your private key; your wallet signs every transaction.</div>
+            <div class="trade-warning">⚠ Beta — test with a small amount first. Sentry never sees your private key; your wallet signs every transaction. If a platform fee applies, it's included as a visible line in the same transaction you sign — never a separate or hidden charge.</div>
             <div id="walletArea"></div>
           </div>
         </div>
@@ -641,7 +656,12 @@
       const buildData = await buildRes.json();
       if (!buildRes.ok || !buildData.transaction) throw new Error(buildData.error || 'Failed to build transaction');
 
-      setTradeStatus('Confirm the transaction in Phantom…', 'pending');
+      if (buildData.feeApplied) {
+        setTradeStatus(`Includes a ${(buildData.feeBps / 100).toFixed(2)}% platform fee, part of this same transaction. Confirm in Phantom…`, 'pending');
+      } else {
+        setTradeStatus('Confirm the transaction in Phantom…', 'pending');
+      }
+
       const txBytes = base64ToBytes(buildData.transaction);
       const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
       const { signature } = await window.solana.signAndSendTransaction(tx);

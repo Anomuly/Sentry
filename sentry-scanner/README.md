@@ -146,3 +146,40 @@ and a red/purple/black color theme throughout. Score colors (green =
 safe, red = danger, amber = caution) were kept as-is on purpose — that
 mapping is how people already read risk at a glance, and changing it
 would hurt readability more than it would help the aesthetic.
+
+## Platform fee (beta) — collecting a cut of trades
+
+**Not legal advice — get a real attorney before relying on this for
+real revenue.** Charging a fee on other people's trades is a real
+financial service, and depending on jurisdiction that can touch
+money-transmitter rules; meme coins are already legally murky as an
+asset class. This is built in the most defensible way available (the
+fee is one extra instruction inside the same transaction the user
+signs — Sentry never custodies funds, never routes them through
+itself, and the fee is visible in the transaction, not hidden), but
+that is an engineering choice, not a legal clearance.
+
+### Setup
+1. Create a brand-new Solana wallet (Phantom or any other) dedicated
+   only to receiving fees. **Never share its seed phrase or private
+   key with anyone, including Claude.** Only its public address is
+   needed.
+2. On Railway, set two environment variables on the service:
+   - `FEE_WALLET_ADDRESS` — that wallet's public address
+   - `FEE_BPS` — the fee in basis points (e.g. `50` = 0.5%, `100` = 1%)
+3. Leave either unset and fee collection is fully off — trades work
+   exactly as before, no code changes needed to disable it.
+
+### Real limitations, on purpose
+- Only applies to SOL-denominated **buys** right now. Sell proceeds in
+  SOL aren't known ahead of execution on a bonding curve — computing a
+  reliable fee for sells needs a separate price-quote step, not built
+  yet.
+- If a transaction uses Solana address lookup tables, fee injection is
+  skipped entirely rather than risk producing a malformed transaction
+  that's never been tested against mainnet from this environment.
+- The fee is always shown to the user in the trade panel before they
+  sign — this was a deliberate choice, not optional. A hidden fee
+  inside a transaction someone is asked to sign is the kind of thing
+  that erodes trust fast and may also carry its own disclosure
+  obligations depending on jurisdiction.

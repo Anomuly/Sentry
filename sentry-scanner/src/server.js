@@ -9,6 +9,7 @@ import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { VersionedTransaction, TransactionMessage, SystemProgram, PublicKey } from '@solana/web3.js';
 
 import { PumpFeed } from './pumpFeed.js';
 import { RobinhoodFeed } from './robinhoodFeed.js';
@@ -16,6 +17,14 @@ import { RiskEngine } from './riskEngine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8080;
+
+// --- Platform fee config ---
+// FEE_WALLET_ADDRESS must be a PUBLIC Solana address only — never a
+// private key or seed phrase. Set both env vars on Railway to enable;
+// leave either unset and fee injection is a no-op (trades work exactly
+// as before, just with no fee added).
+const FEE_WALLET = process.env.FEE_WALLET_ADDRESS || null;
+const FEE_BPS = Number(process.env.FEE_BPS || 0); // basis points, e.g. 50 = 0.5%
 
 const app = express();
 app.use(express.json());
@@ -178,7 +187,57 @@ wss.on('connection', (ws) => {
   if (engine.solUsd) ws.send(JSON.stringify({ type: 'solPrice', usd: engine.solUsd }));
 });
 
-// --- Trade transaction builder (Solana / Pump.fun) ---
+// Adds a platform fee as an EXTRA instruction inside the same
+// transaction the user already has to sign — never a separate hidden
+// transfer, never something Sentry holds or routes through itself.
+// This is the same pattern legitimate DEX aggregators (Jupiter, etc.)
+// use for referral/platform fees.
+//
+// Deliberately conservative: only applies to SOL-denominated buys,
+// where the fee amount is known upfront. Sell proceeds in SOL aren't
+// known until the trade executes on the bonding curve, so a reliable
+// fee can't be computed ahead of time for sells yet — that would need
+// a separate quote step, not implemented here. And if the transaction
+// uses address lookup tables, this skips fee injection entirely rather
+// than risk producing a subtly broken transaction with no way to test
+// it against mainnet from this environment.
+async function addPlatformFee(base64Tx, traderPublicKey, amountSol) {
+  if (!FEE_WALLET || !FEE_BPS || amountSol <= 0) {
+    return { transaction: base64Tx, feeApplied: false };
+  }
+
+  try {
+    const txBytes = Buffer.from(base64Tx, 'base64');
+    const tx = VersionedTransaction.deserialize(txBytes);
+
+    if (tx.message.addressTableLookups && tx.message.addressTableLookups.length > 0) {
+      console.warn('[fee] skipping — transaction uses address lookup tables');
+      return { transaction: base64Tx, feeApplied: false };
+    }
+
+    const message = TransactionMessage.decompile(tx.message);
+    const feeLamports = Math.floor(amountSol * 1_000_000_000 * (FEE_BPS / 10000));
+    if (feeLamports <= 0) return { transaction: base64Tx, feeApplied: false };
+
+    message.instructions.push(
+      SystemProgram.transfer({
+        fromPubkey: new PublicKey(traderPublicKey),
+        toPubkey: new PublicKey(FEE_WALLET),
+        lamports: feeLamports,
+      })
+    );
+
+    const newTx = new VersionedTransaction(message.compileToV0Message());
+    return {
+      transaction: Buffer.from(newTx.serialize()).toString('base64'),
+      feeApplied: true,
+      feeLamports,
+    };
+  } catch (err) {
+    console.error('[fee] injection failed, sending unmodified transaction:', err.message);
+    return { transaction: base64Tx, feeApplied: false };
+  }
+}
 //
 // SECURITY MODEL — read before touching this:
 //   This endpoint NEVER handles a private key and NEVER signs anything.
@@ -229,7 +288,17 @@ app.post('/api/trade/solana-build', async (req, res) => {
     // PumpPortal returns the raw serialized transaction bytes.
     const buffer = await portalRes.arrayBuffer();
     const base64Tx = Buffer.from(buffer).toString('base64');
-    res.json({ transaction: base64Tx });
+
+    const isSolBuy = action === 'buy' && (denominatedInSol === true || denominatedInSol === 'true');
+    const feeResult = isSolBuy
+      ? await addPlatformFee(base64Tx, publicKey, amount)
+      : { transaction: base64Tx, feeApplied: false };
+
+    res.json({
+      transaction: feeResult.transaction,
+      feeApplied: feeResult.feeApplied,
+      feeBps: feeResult.feeApplied ? FEE_BPS : 0,
+    });
   } catch (err) {
     res.status(500).json({ error: 'Transaction build failed: ' + err.message });
   }
