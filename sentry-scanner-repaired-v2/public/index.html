@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentry</title>
+<script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.0.5/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root {
+    --bg: #0A050C; --surface: #150A12; --surface-2: #1E0F1A; --surface-3: #281424;
+    --line: #3A1B2C; --line-soft: #2A1220;
+    --text: #F6E9EF; --text-dim: #B08696; --text-faint: #6E4351;
+    --up: #00E5A0; --down: #FF2D4E; --amber: #FFB84D;
+    --accent: #FF3D68; --accent-2: #8B2FD9; --gold: #FFD166;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    --disp: -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 13px; }
+  ::-webkit-scrollbar { width: 7px; height: 7px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  button { font-family: inherit; cursor: pointer; }
+
+  .topbar {
+    height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 18px;
+    padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--surface);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  #globeCanvas { display: block; filter: drop-shadow(0 0 12px rgba(255,61,104,0.45)); }
+  .brand h1 {
+    font-family: var(--disp); font-weight: 900; font-size: 22px; margin: 0;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    background: linear-gradient(180deg, #FFF0C4 0%, var(--gold) 30%, var(--accent) 68%, var(--accent-2) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 12px rgba(255,61,104,0.45)); line-height: 1;
+  }
+  .topsearch { flex: 1; max-width: 620px; margin: 0 auto; position: relative; }
+  .topsearch input {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 9px; padding: 9px 12px 9px 34px; color: var(--text);
+    font-family: var(--mono); font-size: 12.5px; outline: none;
+  }
+  .topsearch input:focus { border-color: var(--accent); }
+  .topsearch input::placeholder { color: var(--text-faint); }
+  .topsearch .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-faint); }
+  .chainchips { display: flex; gap: 7px; flex-shrink: 0; }
+  .chip {
+    display: flex; align-items: center; gap: 5px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.05em; padding: 5px 9px 5px 7px; border-radius: 100px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text-faint);
+  }
+  .chip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-faint); }
+  .chip.live { color: var(--up); }
+  .chip.live .dot { background: var(--up); box-shadow: 0 0 6px var(--up); animation: blink 1.6s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .shell { display: flex; height: calc(100vh - 56px); }
+
+  .sidebar {
+    width: 290px; flex-shrink: 0; display: flex; flex-direction: column;
+    border-right: 1px solid var(--line); background: var(--surface);
+  }
+  .side-tabs { display: flex; gap: 2px; padding: 10px 12px 0; }
+  .side-tab {
+    font-family: var(--disp); font-weight: 700; font-size: 11.5px; padding: 6px 9px;
+    background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-faint);
+  }
+  .side-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .pills { display: flex; gap: 5px; padding: 10px 12px; overflow-x: auto; }
+  .pill {
+    flex-shrink: 0; font-size: 10px; font-weight: 700; padding: 4px 9px;
+    border-radius: 100px; white-space: nowrap; border: 1px solid var(--line);
+    background: var(--surface-2); color: var(--text-faint);
+  }
+  .pill.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .pill .n { opacity: 0.65; margin-left: 3px; }
+
+  .tokenlist { flex: 1; overflow-y: auto; border-top: 1px solid var(--line-soft); }
+  .trow {
+    display: flex; align-items: center; gap: 9px; padding: 9px 12px;
+    border-bottom: 1px solid var(--line-soft); cursor: pointer; position: relative;
+  }
+  .trow:hover, .trow.sel { background: var(--surface-2); }
+  .trow.sel::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background: var(--accent); }
+  .av {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; overflow: hidden;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--disp); font-weight: 800; font-size: 12px; color: #fff;
+  }
+  .av img { width: 100%; height: 100%; object-fit: cover; }
+  .av.lg { width: 40px; height: 40px; font-size: 16px; }
+  .tmain { flex: 1; min-width: 0; }
+  .tsym { font-family: var(--disp); font-weight: 700; font-size: 12.5px; display: flex; align-items: center; gap: 5px; }
+  .tage { font-size: 9px; color: var(--text-faint); font-weight: 400; }
+  .tvol { font-size: 9.5px; color: var(--text-faint); margin-top: 1px; }
+  .tright { text-align: right; flex-shrink: 0; }
+  .tmc { font-family: var(--disp); font-weight: 700; font-size: 12px; }
+  .tscore { font-size: 9.5px; margin-top: 1px; font-weight: 700; }
+  .up { color: var(--up); } .down { color: var(--down); } .warn { color: var(--amber); }
+  .badge-hp {
+    font-size: 7.5px; font-weight: 800; padding: 1px 4px; border-radius: 3px;
+    background: var(--down); color: #fff; margin-left: 4px;
+  }
+  .list-empty { padding: 34px 18px; text-align: center; color: var(--text-faint); font-size: 11px; line-height: 1.7; }
+
+  .center { flex: 1; display: flex; flex-direction: column; min-width: 0; overflow: hidden; }
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--text-faint); gap: 6px; font-size: 12.5px;
+  }
+  .coinhead { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .coinid { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .coinsym { font-family: var(--disp); font-weight: 800; font-size: 17px; line-height: 1.1; }
+  .coinsub { font-size: 10px; color: var(--text-faint); margin-top: 2px; }
+  .addrpill {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 4px;
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 6px; padding: 3px 7px; font-size: 10px; color: var(--text-dim);
+  }
+  .addrpill button { background: none; border: none; color: var(--text-faint); font-size: 10px; padding: 0; }
+  .statrow { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+  .stat { background: var(--surface-2); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; min-width: 74px; }
+  .stat .k { font-size: 8.5px; color: var(--text-faint); }
+  .stat .v { font-family: var(--disp); font-weight: 700; font-size: 12.5px; margin-top: 1px; }
+
+  .gradwrap { padding: 7px 14px; border-bottom: 1px solid var(--line); }
+  .gradtop { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--text-faint); margin-bottom: 4px; }
+  .gradbar { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+  .gradbar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent), var(--gold)); transition: width .4s; }
+  .pmtoggle { display: flex; gap: 0; }
+  .pmtoggle button {
+    font-size: 9.5px; font-weight: 700; padding: 4px 9px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text-faint);
+  }
+  .pmtoggle button:first-child { border-radius: 5px 0 0 5px; }
+  .pmtoggle button:last-child { border-radius: 0 5px 5px 0; border-left: none; }
+  .pmtoggle button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .avwrap { position: relative; flex-shrink: 0; }
+  .chainbadge {
+    position: absolute; bottom: -1px; right: -1px; width: 12px; height: 12px;
+    border-radius: 50%; border: 2px solid var(--surface); font-size: 6px;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff;
+  }
+  .chainbadge.sol { background: linear-gradient(135deg,#14F195,#9945FF); }
+  .chainbadge.rh { background: #00C805; }
+  .charttools { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .tfs { display: flex; gap: 3px; }
+  .tf { font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-faint); }
+  .tf.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .ohlc { font-size: 10px; color: var(--text-faint); display: flex; gap: 10px; flex-wrap: wrap; }
+  .ohlc b { color: var(--text); font-weight: 600; }
+  .chartbox { flex: 1; position: relative; min-height: 200px; }
+  #chart { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .chartmsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 30px; color: var(--text-faint); font-size: 11.5px; line-height: 1.7; }
+  .ttip { position: absolute; pointer-events: none; z-index: 6; background: rgba(10,5,12,0.96); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 10px; line-height: 1.6; white-space: nowrap; opacity: 0; transition: opacity .1s; }
+  .ttip.show { opacity: 1; }
+  #chart { cursor: crosshair; }
+  #chart.grabbing { cursor: grabbing; }
+  .chartbtns { display: flex; gap: 4px; margin-left: auto; }
+  .cbtn {
+    font-size: 9.5px; font-weight: 700; padding: 4px 8px; border-radius: 5px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text-faint);
+  }
+  .cbtn:hover { color: var(--text); border-color: var(--accent); }
+  .cbtn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .charthint {
+    position: absolute; bottom: 6px; left: 10px; font-size: 9px;
+    color: var(--text-faint); opacity: 0.7; pointer-events: none;
+  }
+
+  .btmpanel { height: 190px; flex-shrink: 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; }
+  .btmtabs { display: flex; gap: 2px; padding: 6px 14px 0; border-bottom: 1px solid var(--line-soft); }
+  .btmtab { font-family: var(--disp); font-weight: 700; font-size: 10.5px; padding: 5px 9px; background: none; border: none; border-bottom: 2px solid transparent; color: var(--text-faint); }
+  .btmtab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .btmbody { flex: 1; overflow-y: auto; }
+  table.data { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+  table.data th { text-align: left; padding: 6px 14px; color: var(--text-faint); font-weight: 500; font-size: 9px; position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--line-soft); }
+  table.data td { padding: 6px 14px; border-bottom: 1px solid var(--line-soft); }
+  table.data tr:hover td { background: var(--surface-2); }
+  .bar { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; min-width: 50px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  .panel-note { padding: 22px 16px; color: var(--text-faint); font-size: 11px; line-height: 1.7; text-align: center; }
+
+  .right { width: 280px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; overflow-y: auto; }
+  .bs { display: flex; padding: 12px 12px 0; }
+  .bs button { flex: 1; padding: 9px; font-family: var(--disp); font-weight: 800; font-size: 13px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-faint); }
+  .bs button:first-child { border-radius: 8px 0 0 8px; }
+  .bs button:last-child { border-radius: 0 8px 8px 0; border-left: none; }
+  .bs button.on.buy { background: var(--up); color: #04140D; border-color: var(--up); }
+  .bs button.on.sell { background: var(--down); color: #fff; border-color: var(--down); }
+  .amt { padding: 12px; }
+  .amt input { width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; color: var(--text); font-family: var(--disp); font-weight: 700; font-size: 20px; outline: none; }
+  .amt input:focus { border-color: var(--accent); }
+  .quick { display: flex; gap: 5px; margin-top: 8px; }
+  .quick button { flex: 1; padding: 6px 0; font-size: 10.5px; font-weight: 700; border-radius: 6px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-dim); }
+  .quick button:hover { color: var(--text); border-color: var(--accent); }
+  .exec { width: calc(100% - 24px); margin: 0 12px 10px; padding: 12px; border-radius: 9px; border: none; font-family: var(--disp); font-weight: 800; font-size: 14px; }
+  .exec.buy { background: var(--up); color: #04140D; }
+  .exec.sell { background: var(--down); color: #fff; }
+  .exec:disabled, .amt input:disabled, .quick button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .tstat { margin: 0 12px 10px; font-size: 10.5px; padding: 8px 10px; border-radius: 7px; }
+  .tstat.pending { background: rgba(139,47,217,0.14); color: #D5B4FF; }
+  .tstat.success { background: rgba(0,229,160,0.12); color: var(--up); }
+  .tstat.error { background: rgba(255,45,78,0.12); color: var(--down); }
+  .warnbox { margin: 0 12px 12px; font-size: 10px; line-height: 1.6; color: var(--amber); background: rgba(255,184,77,0.08); border: 1px solid rgba(255,184,77,0.22); border-radius: 7px; padding: 8px 10px; }
+  .rsec { padding: 12px; border-top: 1px solid var(--line-soft); }
+  .rsec h4 { font-size: 9.5px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 9px; font-weight: 600; }
+  .flagrow { font-size: 10.5px; line-height: 1.5; padding: 8px 9px; border-radius: 6px; margin-bottom: 6px; background: rgba(255,45,78,0.09); border: 1px solid rgba(255,45,78,0.2); }
+  .flagrow.ok { background: rgba(0,229,160,0.08); border-color: rgba(0,229,160,0.2); }
+  .flagrow.crit { background: rgba(255,45,78,0.2); border-color: var(--down); font-weight: 600; box-shadow: 0 0 12px rgba(255,45,78,0.22); }
+  .flagrow.crit::before { content: '🛑 '; }
+  .connectbtn { width: calc(100% - 24px); margin: 0 12px 12px; padding: 12px; border-radius: 9px; background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; border: none; font-family: var(--disp); font-weight: 800; font-size: 13px; }
+  .wpill { margin: 0 12px 10px; font-size: 10px; color: var(--up); display: flex; justify-content: space-between; }
+
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(18px); background: var(--surface-3); border: 1px solid var(--up); color: var(--up); padding: 9px 16px; border-radius: 100px; font-size: 11.5px; opacity: 0; transition: opacity .2s, transform .2s; z-index: 90; pointer-events: none; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 1180px) { .right, .sidebar { width: 240px; } }
+  @media (max-width: 900px) {
+    html, body { overflow: auto; }
+    .shell { flex-direction: column; height: auto; }
+    .sidebar { width: 100%; height: 300px; border-right: none; border-bottom: 1px solid var(--line); }
+    .right { width: 100%; border-left: none; border-top: 1px solid var(--line); }
+    .chartbox { height: 300px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <canvas id="globeCanvas"></canvas>
+    <h1>Sentry</h1>
+  </div>
+  <div class="topsearch">
+    <span class="ico">&#9906;</span>
+    <input id="search" placeholder="Search tokens or paste a contract address…" />
+  </div>
+  <div class="chainchips">
+    <div class="chip" id="solChip"><span class="dot"></span>SOLANA</div>
+    <div class="chip" id="rhChip"><span class="dot"></span>ROBINHOOD</div>
+  </div>
+</div>
+
+<div class="shell">
+  <div class="sidebar">
+    <div class="side-tabs"><button class="side-tab active">Tokens</button></div>
+    <div class="pills" id="pills">
+      <button class="pill active" data-f="all">Live<span class="n" data-c="all">0</span></button>
+      <button class="pill" data-f="flagged">Rug Watch<span class="n" data-c="flagged">0</span></button>
+      <button class="pill" data-f="critical">Honeypot<span class="n" data-c="critical">0</span></button>
+      <button class="pill" data-f="clean">Clean<span class="n" data-c="clean">0</span></button>
+      <button class="pill" data-f="solana">Pump<span class="n" data-c="solana">0</span></button>
+      <button class="pill" data-f="robinhood">RH<span class="n" data-c="robinhood">0</span></button>
+    </div>
+    <div class="tokenlist" id="tokenlist"></div>
+  </div>
+
+  <div class="center">
+    <div class="empty-state" id="emptyState">
+      <div>Waiting for the first launch…</div>
+      <div style="font-size:11px;">Select a token from the list to open its terminal</div>
+    </div>
+    <div id="coinView" style="display:none; flex-direction:column; flex:1; min-height:0;">
+      <div class="coinhead" id="coinhead"></div>
+      <div class="gradwrap" id="gradwrap" style="display:none;"></div>
+      <div class="charttools">
+        <div class="tfs" id="tfs">
+          <button class="tf active" data-tf="minute" data-agg="1">1m</button>
+          <button class="tf" data-tf="minute" data-agg="5">5m</button>
+          <button class="tf" data-tf="minute" data-agg="15">15m</button>
+          <button class="tf" data-tf="hour" data-agg="1">1H</button>
+          <button class="tf" data-tf="hour" data-agg="4">4H</button>
+          <button class="tf" data-tf="day" data-agg="1">1D</button>
+        </div>
+        <div class="ohlc" id="ohlc"></div>
+        <div class="chartbtns">
+          <div class="pmtoggle" title="Toggle chart values between price and market cap">
+            <button id="btnPrice" class="on">Price</button>
+            <button id="btnMcap">MCap</button>
+          </div>
+          <button class="cbtn" id="btnZoomOut" title="Zoom out">−</button>
+          <button class="cbtn" id="btnZoomIn" title="Zoom in">+</button>
+          <button class="cbtn" id="btnFit" title="Fit all candles">Fit</button>
+          <button class="cbtn on" id="btnFollow" title="Auto-scroll to newest candle">Live</button>
+        </div>
+      </div>
+      <div class="chartbox">
+        <div id="chart"></div>
+        <div class="chartmsg" id="chartmsg">Loading chart…</div>
+      </div>
+      <div class="btmpanel">
+        <div class="btmtabs" id="btmtabs">
+          <button class="btmtab active" data-p="holders">Holders</button>
+          <button class="btmtab" data-p="risk">Risk Report</button>
+          <button class="btmtab" data-p="activity">Activity</button>
+        </div>
+        <div class="btmbody" id="btmbody"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="right" id="right">
+    <div class="panel-note">Select a token to trade.</div>
+  </div>
+</div>
+
+<div class="toast" id="toast">Copied</div>
+
+<script type="module">
+  import { mountGlobe } from './globe.js';
+  mountGlobe(document.getElementById('globeCanvas'), 46);
+</script>
+
+<script>
+const tokenlist = document.getElementById('tokenlist');
+const searchEl = document.getElementById('search');
+const solChip = document.getElementById('solChip');
+const rhChip = document.getElementById('rhChip');
+const toast = document.getElementById('toast');
+const pills = document.getElementById('pills');
+const emptyState = document.getElementById('emptyState');
+const coinView = document.getElementById('coinView');
+const coinhead = document.getElementById('coinhead');
+const rightPanel = document.getElementById('right');
+const btmtabs = document.getElementById('btmtabs');
+const btmbody = document.getElementById('btmbody');
+
+const tokens = new Map();
+const rows = new Map();
+const imageCache = new Map();
+let solUsd = null, filter = 'all', selectedId = null;
+let walletPubkey = null, side = 'buy', btmPanel = 'holders';
+let chartState = { tf: 'minute', agg: 1, candles: [], token: null };
+let chartFetchId = 0;
+
+const scoreCls = s => s >= 70 ? 'up' : s >= 40 ? 'warn' : 'down';
+const short = a => a ? a.slice(0,4) + '…' + a.slice(-4) : '—';
+const isCritical = f => /HONEYPOT RISK|Mint authority not renounced/i.test(f);
+const hasCritical = t => (t.flags || []).some(isCritical);
+
+function fmtUsd(n){ if(n==null) return '—'; if(n>=1e6) return '$'+(n/1e6).toFixed(2)+'M'; if(n>=1e3) return '$'+(n/1e3).toFixed(1)+'K'; return '$'+n.toFixed(0); }
+function fmtPrice(n){ if(n==null) return '—'; if(n>=1) return '$'+n.toFixed(3); if(n>=0.0001) return '$'+n.toFixed(6); return '$'+n.toExponential(2); }
+function fmtVol(n){ if(n>=1e6) return '$'+(n/1e6).toFixed(1)+'M'; if(n>=1e3) return '$'+(n/1e3).toFixed(1)+'K'; return '$'+n.toFixed(0); }
+function fmtAge(ms){ const s=Math.max(0,Math.floor(ms/1000)); if(s<60) return s+'s'; const m=Math.floor(s/60); if(m<60) return m+'m'; const h=Math.floor(m/60); if(h<24) return h+'h'; return Math.floor(h/24)+'d'; }
+function showToast(m){ toast.textContent=m; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),1400); }
+function copyText(t,btn){ navigator.clipboard.writeText(t).then(()=>{ showToast('Address copied'); if(btn){const o=btn.textContent; btn.textContent='✓'; setTimeout(()=>btn.textContent=o,1100);} }).catch(()=>showToast('Copy failed')); }
+function mcapOf(t){ if(t.marketCapUsd!=null) return t.marketCapUsd; if(t.marketCapSol!=null&&solUsd) return t.marketCapSol*solUsd; return null; }
+
+function avatar(t, cls){
+  const init=(t.symbol||'?').slice(0,1).toUpperCase();
+  const cached=imageCache.get(t.id);
+  const src=t.iconUrl||(cached&&cached!=='failed'&&cached!=='pending'?cached:null);
+  const ch=t.chain==='robinhood'?'rh':'sol';
+  const badge=`<span class="chainbadge ${ch}">${ch==='sol'?'S':'R'}</span>`;
+  const inner = src
+    ? `<div class="av ${cls||''}"><img src="${src}" onerror="this.parentElement.textContent='${init}'"/></div>`
+    : `<div class="av ${cls||''}">${init}</div>`;
+  return `<span class="avwrap">${inner}${badge}</span>`;
+}
+async function resolveImage(t){
+  if(!t.uri||imageCache.has(t.id)) return;
+  imageCache.set(t.id,'pending');
+  try{ const r=await fetch(t.uri); const m=await r.json(); imageCache.set(t.id, m.image||'failed'); }
+  catch{ imageCache.set(t.id,'failed'); }
+  const row=rows.get(t.id);
+  if(row) row.replaceWith(renderRow(tokens.get(t.id)));
+  if(t.id===selectedId) renderCoinHead(tokens.get(t.id));
+}
+
+function renderRow(t){
+  const mc=mcapOf(t);
+  const el=document.createElement('div');
+  el.className='trow'+(t.id===selectedId?' sel':'');
+  el.dataset.id=t.id.toLowerCase();
+  el.dataset.sym=(t.symbol||'').toLowerCase();
+  el.dataset.chain=t.chain;
+  el.dataset.flagged=(t.flags&&t.flags.length)?'1':'0';
+  el.dataset.crit=hasCritical(t)?'1':'0';
+  el.innerHTML=`${avatar(t)}
+    <div class="tmain">
+      <div class="tsym">${t.symbol||'???'}<span class="tage" data-created="${t.createdAt}">0s</span>${hasCritical(t)?'<span class="badge-hp">HONEYPOT</span>':''}</div>
+      <div class="tvol">${t.chain==='solana'?'Pump.fun':'Robinhood'}</div>
+    </div>
+    <div class="tright">
+      <div class="tmc">${mc!=null?fmtUsd(mc):'—'}</div>
+      <div class="tscore ${scoreCls(t.score)}">${t.score}</div>
+    </div>`;
+  el.addEventListener('click',()=>select(t.id));
+  return el;
+}
+
+function upsert(t){
+  tokens.set(t.id,t);
+  const ex=rows.get(t.id); const fresh=renderRow(t);
+  if(ex) ex.replaceWith(fresh); else tokenlist.prepend(fresh);
+  rows.set(t.id,fresh); resolveImage(t);
+  const e=tokenlist.querySelector('.list-empty'); if(e) e.remove();
+  if(!selectedId) select(t.id);
+  else if(t.id===selectedId){ renderCoinHead(t); renderRight(t); renderBtm(t); }
+  applyFilter();
+  while(tokenlist.children.length>150){
+    const last=tokenlist.lastElementChild;
+    if(!last||!last.dataset.id) break;
+    rows.delete(last.dataset.id); tokens.delete(last.dataset.id); last.remove();
+  }
+}
+
+function select(id){
+  selectedId=id;
+  document.querySelectorAll('.trow').forEach(r=>r.classList.toggle('sel',r.dataset.id===id.toLowerCase()));
+  const t=tokens.get(id); if(!t) return;
+  emptyState.style.display='none';
+  coinView.style.display='flex';
+  destroyChart(); chartState.candles=[];
+  renderCoinHead(t); renderRight(t); renderBtm(t); wireChart(t); loadChart(t);
+}
+
+// Bonding curve graduation progress — Pump.fun's own signature metric,
+// derived from the SOL actually sitting in the curve. Free to compute.
+function renderGraduation(t){
+  const gw=document.getElementById('gradwrap');
+  if(!gw) return;
+  const cs=curveStats[t.id];
+  if(!cs || cs.gradProgress==null){ gw.style.display='none'; return; }
+  gw.style.display='block';
+  if(cs.complete){
+    gw.innerHTML=`<div class="gradtop"><span style="color:var(--up)">✓ GRADUATED — migrated off the bonding curve</span></div>
+      <div class="gradbar"><i style="width:100%"></i></div>`;
+    return;
+  }
+  const pct=(cs.gradProgress*100);
+  const solIn=(cs.liquiditySol||0).toFixed(2);
+  gw.innerHTML=`<div class="gradtop">
+      <span>BONDING CURVE · ${solIn} SOL in curve</span>
+      <span>${pct.toFixed(1)}% to graduation</span>
+    </div>
+    <div class="gradbar"><i style="width:${Math.min(100,pct)}%"></i></div>`;
+}
+
+function renderCoinHead(t){
+  const mc=mcapOf(t);
+  const priceUsd=t.priceSol!=null&&solUsd?t.priceSol*solUsd:null;
+  // Live values from the bonding curve beat the creation-time snapshot.
+  const cs=curveStats[t.id];
+  const livePriceUsd=cs&&cs.lastPrice!=null&&solUsd?cs.lastPrice*solUsd:null;
+  const liveMc=livePriceUsd!=null?livePriceUsd*PUMP_SUPPLY:null;
+  coinhead.innerHTML=`
+    <div class="coinid">${avatar(t,'lg')}
+      <div>
+        <div class="coinsym">${t.symbol||'???'}</div>
+        <div class="coinsub">${t.name||(t.chain==='solana'?'Pump.fun · Solana':'Robinhood Chain')}</div>
+        <div class="addrpill"><span>${short(t.id)}</span><button id="copyAddr">copy</button></div>
+      </div>
+    </div>
+    <div class="statrow">
+      <div class="stat"><div class="k">MARKET CAP</div><div class="v">${liveMc!=null?fmtUsd(liveMc):(mc!=null?fmtUsd(mc):'—')}</div></div>
+      <div class="stat"><div class="k">PRICE</div><div class="v">${fmtPrice(livePriceUsd??priceUsd??t.priceSol)}</div></div>
+      <div class="stat"><div class="k">LIQUIDITY</div><div class="v">${cs&&cs.liquiditySol!=null?(solUsd?fmtUsd(cs.liquiditySol*solUsd):cs.liquiditySol.toFixed(1)+' SOL'):'—'}</div></div>
+      <div class="stat"><div class="k">TRUST</div><div class="v ${scoreCls(t.score)}">${t.score}</div></div>
+      <div class="stat"><div class="k">FLAGS</div><div class="v ${t.flags&&t.flags.length?'down':'up'}">${(t.flags||[]).length}</div></div>
+      <div class="stat"><div class="k">AGE</div><div class="v" data-created="${t.createdAt}">0s</div></div>
+    </div>`;
+  const c=document.getElementById('copyAddr');
+  if(c) c.addEventListener('click',e=>copyText(t.id,e.target));
+}
+
+btmtabs.addEventListener('click',e=>{
+  const b=e.target.closest('.btmtab'); if(!b) return;
+  btmtabs.querySelectorAll('.btmtab').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); btmPanel=b.dataset.p;
+  const t=tokens.get(selectedId); if(t) renderBtm(t);
+});
+
+async function renderBtm(t){
+  if(btmPanel==='risk'){
+    btmbody.innerHTML=`<div style="padding:12px 14px;">${
+      (t.flags&&t.flags.length)
+        ? t.flags.map(f=>`<div class="flagrow ${isCritical(f)?'crit':''}">${isCritical(f)?'':'⚠ '}${f}</div>`).join('')
+        : `<div class="flagrow ok">✓ No red flags detected. Not proof of safety — it means nothing suspicious has surfaced in what Sentry can currently observe.</div>`
+    }</div>`;
+    return;
+  }
+  if(btmPanel==='activity'){
+    btmbody.innerHTML=`<div class="panel-note">Per-trade activity needs PumpPortal's metered trade stream (a paid key tied to a funded wallet).<br>Not enabled — so rather than show fabricated rows, this panel stays empty.<br>Set PUMPPORTAL_API_KEY to turn it on.</div>`;
+    return;
+  }
+  if(t.chain!=='solana'){
+    btmbody.innerHTML=`<div class="panel-note">Holder breakdown is Solana-only right now.</div>`;
+    return;
+  }
+  btmbody.innerHTML=`<div class="panel-note">Loading holders…</div>`;
+  try{
+    const r=await fetch('/api/holders?address='+encodeURIComponent(t.id));
+    const d=await r.json();
+    if(!d.holders||!d.holders.length){ btmbody.innerHTML=`<div class="panel-note">No holder data returned yet.</div>`; return; }
+    btmbody.innerHTML=`<div style="padding:8px 14px 4px;font-family:var(--disp);font-weight:700;font-size:11px;">Top holders <span style="color:var(--text-faint);font-weight:400">(top ${d.holders.length} accounts)</span></div><table class="data">
+      <thead><tr><th>#</th><th>TOKEN ACCOUNT</th><th>BALANCE</th><th>SHARE</th><th></th></tr></thead>
+      <tbody>${d.holders.map((h,i)=>`<tr>
+        <td style="color:var(--text-faint)">${i+1}</td>
+        <td>${short(h.account)}${h.isLikelyCurve?' <span style="color:var(--text-faint);font-size:9px">(likely bonding curve)</span>':''}</td>
+        <td>${h.amount.toLocaleString(undefined,{maximumFractionDigits:0})}</td>
+        <td class="${h.share>20&&!h.isLikelyCurve?'down':''}">${h.share.toFixed(1)}%</td>
+        <td><div class="bar"><i style="width:${Math.min(100,h.share)}%"></i></div></td>
+      </tr>`).join('')}</tbody></table>
+      <div style="padding:8px 14px;color:var(--text-faint);font-size:9.5px;line-height:1.6;">
+        These are token <b>accounts</b>, not owner wallets — resolving owners costs ~20 extra RPC calls per token, which public RPC won't sustain at launch volume.
+      </div>`;
+  }catch{
+    btmbody.innerHTML=`<div class="panel-note">Holder lookup failed — public RPC may be rate limited right now.</div>`;
+  }
+}
+
+function riskSummaryHtml(t){
+  const flags=t.flags||[];
+  return `<div class="rsec"><h4>Risk — score ${t.score}/100</h4>
+    ${flags.length
+      ? flags.slice(0,4).map(f=>`<div class="flagrow ${isCritical(f)?'crit':''}">${isCritical(f)?'':'⚠ '}${f}</div>`).join('')
+        +(flags.length>4?`<div style="font-size:10px;color:var(--text-faint)">+${flags.length-4} more in Risk Report</div>`:'')
+      : `<div class="flagrow ok">✓ No red flags yet</div>`}
+  </div>`;
+}
+
+function renderRight(t){
+  if(t.chain!=='solana'){
+    rightPanel.innerHTML=`<div class="panel-note">In-app trading is Solana-only right now.<br><br>Robinhood Chain swap execution isn't wired up — writing raw Uniswap calldata untested against mainnet was too risky to ship blind.</div>${riskSummaryHtml(t)}`;
+    return;
+  }
+  const connected=!!walletPubkey;
+  rightPanel.innerHTML=`
+    <div class="bs">
+      <button class="${side==='buy'?'on buy':''}" id="bBuy">Buy</button>
+      <button class="${side==='sell'?'on sell':''}" id="bSell">Sell</button>
+    </div>
+    <div class="amt">
+      <input id="amtIn" type="number" step="any" min="0" placeholder="0.0" ${connected?'':'disabled'} />
+      <div class="quick">${[0.1,0.5,1,5].map(v=>`<button data-q="${v}" ${connected?'':'disabled'}>${v}</button>`).join('')}</div>
+      <div style="font-size:9.5px;color:var(--text-faint);margin-top:6px;">${side==='buy'?'Amount in SOL':'Amount in tokens'}</div>
+    </div>
+    ${connected
+      ? `<div class="wpill"><span>${short(walletPubkey)}</span><span style="color:var(--text-faint)">connected</span></div>
+         <button class="exec ${side}" id="execBtn">${side==='buy'?'Buy':'Sell'} ${t.symbol||''}</button>`
+      : `<button class="connectbtn" id="connectBtn">Connect Phantom to Trade</button>`}
+    <div id="tstatArea"></div>
+    <div class="warnbox">⚠ Beta — test with a small amount first. Sentry never sees your private key; your wallet signs every transaction. Any platform fee is a visible line inside that same transaction.</div>
+    ${riskSummaryHtml(t)}`;
+  const bB=document.getElementById('bBuy'), bS=document.getElementById('bSell');
+  if(bB) bB.onclick=()=>{side='buy'; renderRight(t);};
+  if(bS) bS.onclick=()=>{side='sell'; renderRight(t);};
+  rightPanel.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>{ const i=document.getElementById('amtIn'); if(i) i.value=b.dataset.q; });
+  const cb=document.getElementById('connectBtn');
+  if(cb) cb.onclick=async()=>{ const pk=await connectPhantom(); if(pk) renderRight(t); };
+  const eb=document.getElementById('execBtn');
+  if(eb) eb.onclick=()=>executeTrade(t);
+}
+
+pills.addEventListener('click',e=>{
+  const p=e.target.closest('.pill'); if(!p) return;
+  pills.querySelectorAll('.pill').forEach(x=>x.classList.remove('active'));
+  p.classList.add('active'); filter=p.dataset.f; applyFilter();
+});
+
+function passes(r){
+  switch(filter){
+    case 'flagged': return r.dataset.flagged==='1';
+    case 'critical': return r.dataset.crit==='1';
+    case 'clean': return r.dataset.flagged==='0';
+    case 'solana': return r.dataset.chain==='solana';
+    case 'robinhood': return r.dataset.chain==='robinhood';
+    default: return true;
+  }
+}
+
+function applyFilter(){
+  const q=searchEl.value.trim().toLowerCase();
+  let any=false;
+  const c={all:0,flagged:0,critical:0,clean:0,solana:0,robinhood:0};
+  [...tokenlist.children].forEach(r=>{
+    if(!r.dataset||!r.dataset.id) return;
+    c.all++;
+    if(r.dataset.flagged==='1') c.flagged++; else c.clean++;
+    if(r.dataset.crit==='1') c.critical++;
+    if(r.dataset.chain==='solana') c.solana++; else c.robinhood++;
+    const ok=(!q||r.dataset.sym.includes(q)||r.dataset.id.includes(q))&&passes(r);
+    r.style.display=ok?'':'none';
+    if(ok) any=true;
+  });
+  Object.entries(c).forEach(([k,v])=>{ const el=pills.querySelector(`[data-c="${k}"]`); if(el) el.textContent=v; });
+  if(!any&&q.length>=20){ clearTimeout(window._lk); window._lk=setTimeout(()=>serverLookup(searchEl.value.trim()),400); }
+}
+searchEl.addEventListener('input',applyFilter);
+
+async function serverLookup(raw){
+  try{
+    const r=await fetch('/api/lookup?address='+encodeURIComponent(raw));
+    const d=await r.json();
+    if(d.found&&d.source==='live-history'){ upsert(d.token); select(d.token.id); return; }
+    showToast(d.found?'Found on-chain, not in live feed':(d.reason||'Not found'));
+  }catch{ showToast('Lookup failed'); }
+}
+
+// ---------------- chart (TradingView Lightweight Charts) ----------------
+//
+// Replaced a hand-rolled canvas chart. Lightweight Charts is
+// TradingView's open-source library (Apache 2.0, ~45KB) and handles
+// zoom, pan, crosshair, auto-scaling and the time axis properly — all
+// things the hand-rolled version did badly. TradingView attribution is
+// a license requirement, satisfied by the attributionLogo option below.
+
+let lwChart = null, lwCandles = null, lwVolume = null;
+let chartValueMode = 'price';   // 'price' | 'mcap'
+let curveStats = {};
+const PUMP_SUPPLY = 1e9;
+
+function destroyChart() {
+  if (lwChart) { try { lwChart.remove(); } catch (e) {} }
+  lwChart = null; lwCandles = null; lwVolume = null;
+}
+
+function ensureChart() {
+  const el = document.getElementById('chart');
+  if (!el || typeof LightweightCharts === 'undefined') return null;
+  if (lwChart) return lwChart;
+
+  lwChart = LightweightCharts.createChart(el, {
+    layout: {
+      background: { color: 'transparent' },
+      textColor: '#B08696',
+      attributionLogo: true,
+      fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
+    },
+    grid: {
+      vertLines: { color: 'rgba(255,255,255,0.04)' },
+      horzLines: { color: 'rgba(255,255,255,0.04)' },
+    },
+    rightPriceScale: { borderColor: '#3A1B2C', scaleMargins: { top: 0.08, bottom: 0.28 } },
+    timeScale: { borderColor: '#3A1B2C', timeVisible: true, secondsVisible: true, rightOffset: 4 },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode ? LightweightCharts.CrosshairMode.Normal : 0,
+      vertLine: { color: '#FF3D68', width: 1, style: 2, labelBackgroundColor: '#FF3D68' },
+      horzLine: { color: '#FF3D68', width: 1, style: 2, labelBackgroundColor: '#FF3D68' },
+    },
+    handleScroll: true,
+    handleScale: true,
+    autoSize: true,
+  });
+
+  // v5 uses addSeries(SeriesType, opts); v4 used addCandlestickSeries().
+  // Support both so a CDN version bump doesn't silently break the chart.
+  const candleOpts = {
+    upColor: '#00E5A0', downColor: '#FF2D4E',
+    borderUpColor: '#00E5A0', borderDownColor: '#FF2D4E',
+    wickUpColor: '#00E5A0', wickDownColor: '#FF2D4E',
+  };
+  if (typeof lwChart.addSeries === 'function' && LightweightCharts.CandlestickSeries) {
+    lwCandles = lwChart.addSeries(LightweightCharts.CandlestickSeries, candleOpts);
+    lwVolume = lwChart.addSeries(LightweightCharts.HistogramSeries, {
+      priceFormat: { type: 'volume' }, priceScaleId: 'vol',
+    });
+  } else {
+    lwCandles = lwChart.addCandlestickSeries(candleOpts);
+    lwVolume = lwChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+  }
+  lwChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+  lwChart.subscribeCrosshairMove(function (param) {
+    const ohlc = document.getElementById('ohlc');
+    if (!ohlc) return;
+    if (!param || !param.time || !param.seriesData) { updateOhlcReadout(); return; }
+    const d = param.seriesData.get(lwCandles);
+    if (!d) { updateOhlcReadout(); return; }
+    const f = chartValueMode === 'mcap' ? fmtUsd : fmtPrice;
+    const chg = ((d.close - d.open) / d.open) * 100;
+    ohlc.innerHTML =
+      '<span>O <b>' + f(d.open) + '</b></span><span>H <b>' + f(d.high) + '</b></span>' +
+      '<span>L <b>' + f(d.low) + '</b></span><span>C <b>' + f(d.close) + '</b></span>' +
+      '<span class="' + (chg >= 0 ? 'up' : 'down') + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>';
+  });
+
+  return lwChart;
+}
+
+function applyChartData() {
+  if (!ensureChart() || !chartState.candles.length) return;
+  const mult = chartValueMode === 'mcap' && solUsd ? solUsd * PUMP_SUPPLY : 1;
+  const seen = new Set();
+  const data = [], vols = [];
+
+  for (const c of chartState.candles) {
+    // Lightweight Charts requires strictly ascending, unique timestamps.
+    if (seen.has(c.t)) continue;
+    seen.add(c.t);
+    data.push({ time: c.t, open: c.o * mult, high: c.h * mult, low: c.l * mult, close: c.c * mult });
+    if (c.v != null) {
+      vols.push({ time: c.t, value: c.v, color: c.c >= c.o ? 'rgba(0,229,160,0.4)' : 'rgba(255,45,78,0.4)' });
+    }
+  }
+  data.sort(function (a, b) { return a.time - b.time; });
+  vols.sort(function (a, b) { return a.time - b.time; });
+
+  lwCandles.setData(data);
+  lwVolume.setData(vols); // empty array simply hides the volume pane
+  lwCandles.applyOptions({
+    priceFormat: chartValueMode === 'mcap'
+      ? { type: 'price', precision: 0, minMove: 1 }
+      : { type: 'price', precision: 9, minMove: 0.000000001 },
+  });
+
+  if (chartState.resetViewport) {
+    lwChart.timeScale().fitContent();
+    chartState.resetViewport = false;
+  }
+  updateOhlcReadout();
+}
+
+function updateOhlcReadout() {
+  const ohlc = document.getElementById('ohlc');
+  if (!ohlc || !chartState.candles.length) return;
+  const mult = chartValueMode === 'mcap' && solUsd ? solUsd * PUMP_SUPPLY : 1;
+  const f = chartValueMode === 'mcap' ? fmtUsd : fmtPrice;
+  const k = chartState.candles;
+  const last = k[k.length - 1], first = k[0];
+  const chg = ((last.c - first.o) / first.o) * 100;
+  const hasVol = k.some(function (c) { return c.v != null; });
+  const tv = k.reduce(function (s, c) { return s + (c.v || 0); }, 0);
+  ohlc.innerHTML =
+    '<span>O <b>' + f(last.o * mult) + '</b></span><span>H <b>' + f(last.h * mult) + '</b></span>' +
+    '<span>L <b>' + f(last.l * mult) + '</b></span><span>C <b>' + f(last.c * mult) + '</b></span>' +
+    '<span class="' + (chg >= 0 ? 'up' : 'down') + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>' +
+    (hasVol ? '<span>VOL <b>' + fmtVol(tv) + '</b></span>' : '');
+}
+
+function bindChartControls() {
+  const bp = document.getElementById('btnPrice');
+  const bm = document.getElementById('btnMcap');
+  if (bp && !bp.dataset.bound) {
+    bp.dataset.bound = '1';
+    bp.onclick = function () { chartValueMode = 'price'; bp.classList.add('on'); if (bm) bm.classList.remove('on'); applyChartData(); };
+  }
+  if (bm && !bm.dataset.bound) {
+    bm.dataset.bound = '1';
+    bm.onclick = function () {
+      if (!solUsd) { showToast('Waiting on SOL price — try again shortly'); return; }
+      chartValueMode = 'mcap'; bm.classList.add('on'); if (bp) bp.classList.remove('on'); applyChartData();
+    };
+  }
+  const fit = document.getElementById('btnFit');
+  if (fit && !fit.dataset.bound) {
+    fit.dataset.bound = '1';
+    fit.onclick = function () { if (lwChart) lwChart.timeScale().fitContent(); };
+  }
+  // Lightweight Charts has no direct zoom API; nudging the visible
+  // logical range achieves the same thing.
+  const nudge = function (factor) {
+    if (!lwChart) return;
+    const ts = lwChart.timeScale();
+    const r = ts.getVisibleLogicalRange();
+    if (!r) return;
+    const mid = (r.from + r.to) / 2, half = (r.to - r.from) / 2 * factor;
+    ts.setVisibleLogicalRange({ from: mid - half, to: mid + half });
+  };
+  const zi = document.getElementById('btnZoomIn');
+  const zo = document.getElementById('btnZoomOut');
+  if (zi && !zi.dataset.bound) { zi.dataset.bound = '1'; zi.onclick = function () { nudge(1 / 1.4); }; }
+  if (zo && !zo.dataset.bound) { zo.dataset.bound = '1'; zo.onclick = function () { nudge(1.4); }; }
+}
+
+async function loadChart(t){
+  if(!chartState.token || chartState.token.id !== t.id) chartState.resetViewport = true;
+  chartState.token=t;
+  const id=++chartFetchId;
+  const msg=document.getElementById('chartmsg');
+  if(msg && !chartState.candles.length){ msg.style.display='flex'; msg.textContent='Loading chart…'; }
+  bindChartControls();
+  try{
+    const r=await fetch(`/api/chart?address=${encodeURIComponent(t.id)}&chain=${t.chain}&timeframe=${chartState.tf}&aggregate=${chartState.agg}`);
+    const d=await r.json();
+    if(id!==chartFetchId) return;
+    chartState.candles=d.candles||[];
+    chartState.source=d.source||'pool';
+    if(d.source==='curve'){
+      curveStats[t.id]={ liquiditySol:d.liquiditySol, gradProgress:d.gradProgress, lastPrice:d.lastPrice, complete:d.complete };
+      renderGraduation(t);
+      renderCoinHead(t);
+    } else {
+      const gw=document.getElementById('gradwrap'); if(gw) gw.style.display='none';
+    }
+    if(!chartState.candles.length){
+      if(msg){ msg.style.display='flex'; msg.textContent=d.reason||'No chart data yet.'; }
+      destroyChart();
+      return;
+    }
+    if(msg) msg.style.display='none';
+    applyChartData();
+  }catch{
+    if(id!==chartFetchId) return;
+    if(msg && !chartState.candles.length){ msg.style.display='flex'; msg.textContent='Chart failed to load.'; }
+  }
+}
+
+function wireChart(t){
+  const g=document.getElementById('tfs'); if(!g) return;
+  g.querySelectorAll('.tf').forEach(b=>{
+    b.classList.toggle('active',b.dataset.tf===chartState.tf&&+b.dataset.agg===chartState.agg);
+    b.onclick=()=>{
+      chartState.tf=b.dataset.tf; chartState.agg=+b.dataset.agg; chartState.resetViewport=true;
+      g.querySelectorAll('.tf').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active'); loadChart(t);
+    };
+  });
+  bindChartControls();
+}
+
+// Chart refresh cadence follows the data source.
+setInterval(()=>{ if(chartState.token&&selectedId===chartState.token.id&&chartState.source==='curve') loadChart(chartState.token); },3000);
+setInterval(()=>{ if(chartState.token&&selectedId===chartState.token.id&&chartState.source!=='curve') loadChart(chartState.token); },30000);
+
+function b64ToBytes(b64){ const bin=atob(b64), out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
+async function connectPhantom(){
+  if(!window.solana||!window.solana.isPhantom){ showToast('Phantom not detected — install the extension'); return null; }
+  try{ const r=await window.solana.connect(); walletPubkey=r.publicKey.toString(); return walletPubkey; }
+  catch{ showToast('Connection cancelled'); return null; }
+}
+function setTStat(msg,kind){ const a=document.getElementById('tstatArea'); if(a) a.innerHTML=`<div class="tstat ${kind}">${msg}</div>`; }
+async function executeTrade(t){
+  const inp=document.getElementById('amtIn');
+  const amount=parseFloat(inp&&inp.value);
+  if(!amount||amount<=0){ setTStat('Enter an amount first.','error'); return; }
+  const btn=document.getElementById('execBtn'); if(btn) btn.disabled=true;
+  setTStat('Building transaction…','pending');
+  try{
+    const r=await fetch('/api/trade/solana-build',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ publicKey:walletPubkey, action:side, mint:t.id, amount, denominatedInSol:side==='buy', slippage:10 })
+    });
+    const d=await r.json();
+    if(!r.ok||!d.transaction) throw new Error(d.error||'Build failed');
+    setTStat(d.feeApplied
+      ? `Includes a ${(d.feeBps/100).toFixed(2)}% platform fee in this same transaction. Confirm in Phantom…`
+      : 'Confirm in Phantom…','pending');
+    const tx=solanaWeb3.VersionedTransaction.deserialize(b64ToBytes(d.transaction));
+    const { signature }=await window.solana.signAndSendTransaction(tx);
+    setTStat(`Sent. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">View ↗</a>`,'success');
+  }catch(e){ setTStat('Failed: '+(e.message||'unknown error'),'error'); }
+  finally{ if(btn) btn.disabled=false; }
+}
+
+function connect(){
+  const p=location.protocol==='https:'?'wss':'ws';
+  const ws=new WebSocket(`${p}://${location.host}/live`);
+  ws.onmessage=m=>{
+    const d=JSON.parse(m.data);
+    if(d.type==='snapshot'){
+      if(!d.tokens.length) tokenlist.innerHTML=`<div class="list-empty">Nothing yet — Sentry is watching.<br>This fills in as tokens launch.</div>`;
+      d.tokens.forEach(upsert);
+    }
+    if(d.type==='token'||d.type==='update') upsert(d.token);
+    if(d.type==='feedStatus') (d.chain==='robinhood'?rhChip:solChip).classList.toggle('live',d.status==='connected');
+    if(d.type==='solPrice') solUsd=d.usd;
+  };
+  ws.onclose=()=>{ solChip.classList.remove('live'); rhChip.classList.remove('live'); setTimeout(connect,2000); };
+}
+tokenlist.innerHTML=`<div class="list-empty">Connecting to live feeds…</div>`;
+connect();
+
+setInterval(()=>{
+  document.querySelectorAll('[data-created]').forEach(el=>{
+    const c=+el.dataset.created; if(c) el.textContent=fmtAge(Date.now()-c);
+  });
+},1000);
+</script>
+</body>
+</html>
