@@ -50,6 +50,7 @@ export class RiskEngine {
       creator: evt.creator,
       name: evt.name,
       symbol: evt.symbol,
+      uri: evt.uri || null,
       createdAt: evt.createdAt,
       trades: [],
       score: 100,
