@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="theme-color" content="#050505" />
+  <title>Trenchy — Solana Trading Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <canvas id="embers" aria-hidden="true"></canvas>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#dashboard"><span class="brand-orb"><img src="/trenchy-globe.png" alt=""></span><strong>Trenchy</strong></a>
+      <nav class="side-nav" aria-label="Primary">
+        <button class="nav-item active" data-view="dashboard">⌂ <span>Dashboard</span></button>
+        <button class="nav-item" data-view="scanner">⌕ <span>Scanner</span></button>
+        <button class="nav-item" data-view="copy">⇄ <span>Copy Trade</span></button>
+        <button class="nav-item" data-view="sniper">⌁ <span>Sniper Tools</span></button>
+        <button class="nav-item" data-view="watchlist">☆ <span>Watchlist</span></button>
+        <button class="nav-item" data-view="analytics">⌁ <span>Analytics</span></button>
+        <button class="nav-item" data-view="alerts">♧ <span>Alerts</span></button>
+        <button class="nav-item" data-view="portfolio">▣ <span>Portfolio</span></button>
+        <button class="nav-item" data-view="settings">⚙ <span>Settings</span></button>
+      </nav>
+      <div class="plan-card">
+        <b>PRO PLAN</b><p>Unlock all features and boost your trading edge.</p><button>Upgrade Now</button>
+      </div>
+      <div class="sidebar-footer"><span>◐</span><span>◉</span><small>© 2026 Trenchy</small></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <nav><a class="active" href="#dashboard">Dashboard</a><a href="#scanner">Scanner</a><a href="#copy">Copy Trade</a><a href="#sniper">Sniper</a><a href="#analytics">Analytics</a><a href="#docs">Docs</a></nav>
+        <div class="top-actions"><button class="icon-btn" aria-label="Notifications">♧<i></i></button><button id="walletBtn" class="wallet-btn">Connect Wallet</button></div>
+      </header>
+
+      <section id="dashboard" class="view active-view">
+        <div class="status-pill"><span></span> All Systems Operational</div>
+        <section class="hero">
+          <div class="hero-copy">
+            <h1>See Everything.<br>Trade Anything.<br><em>Beat Everyone.</em></h1>
+            <p>Trenchy is an all-in-one Solana trading platform with real-time scanners, sniper tools, copy trading, and powerful analytics. Built for speed. Built for traders.</p>
+            <div class="hero-actions"><button class="primary" data-view="scanner">Start Scanning&nbsp; ⌕</button><button class="secondary">View Docs&nbsp; ▱</button></div>
+          </div>
+          <div class="globe-stage" aria-label="Animated burning globe">
+            <div class="flame-halo halo-one"></div><div class="flame-halo halo-two"></div>
+            <img class="hero-globe" src="/trenchy-globe.png" alt="Earth surrounded by fire">
+            <div class="globe-shine"></div>
+          </div>
+        </section>
+
+        <section class="metrics">
+          <article><span class="metric-icon">⌁</span><div><small>24H VOLUME</small><strong>$184.7M</strong></div><b>+24.3%</b></article>
+          <article><span class="metric-icon">◉</span><div><small>TOKENS SCANNED</small><strong id="scanned">12,842</strong></div><b>+1,205</b></article>
+          <article><span class="metric-icon">▣</span><div><small>WALLETS TRACKED</small><strong id="wallets">8,392</strong></div><b>+423</b></article>
+          <article><span class="metric-icon">%</span><div><small>SUCCESS RATE</small><strong>78.6%</strong></div><b>+6.3%</b></article>
+          <article><span class="metric-icon">♟</span><div><small>ACTIVE USERS</small><strong id="users">2,847</strong></div><b>+312</b></article>
+        </section>
+
+        <section class="dashboard-grid">
+          <article class="panel hot-panel"><header><h2>HOT TOKENS</h2><button data-view="scanner">View All</button></header><div id="hotTokens" class="token-list"></div></article>
+          <article class="panel tx-panel"><header><h2>LIVE TRANSACTIONS</h2><button>View All</button></header><div id="transactions" class="transaction-list"></div></article>
+          <article class="panel market-panel"><header><h2>MARKET OVERVIEW</h2><select aria-label="Market timeframe"><option>24H</option><option>7D</option></select></header><div class="market-list" id="marketOverview"></div></article>
+        </section>
+        <footer class="tagline">ϟ &nbsp;Built for traders. Backed by speed.</footer>
+      </section>
+
+      <section id="scanner" class="view tool-view">
+        <div class="page-heading"><div><p>LIVE INTELLIGENCE</p><h1>Token Scanner</h1><span>Search any Solana token and review market data in seconds.</span></div><div class="live-badge"><i></i> Live</div></div>
+        <div class="scanner-controls panel"><input id="tokenInput" placeholder="Paste a Solana token address" autocomplete="off"><button id="scanBtn" class="primary">Scan Token</button></div>
+        <div id="scanResult" class="scan-result panel"><div class="empty-state">Enter a token address to begin a live scan.</div></div>
+      </section>
+
+      <section id="copy" class="view tool-view"><div class="page-heading"><div><p>AUTOMATION</p><h1>Copy Trade</h1><span>Track selected wallets and mirror activity with your own risk controls.</span></div></div><div class="coming panel"><span>⇄</span><h2>Copy trading workspace</h2><p>Connect a wallet to configure monitored wallets and trade limits.</p><button class="wallet-btn">Connect Wallet</button></div></section>
+      <section id="sniper" class="view tool-view"><div class="page-heading"><div><p>EXECUTION</p><h1>Sniper Tools</h1><span>Prepare fast entries with slippage, priority fee, and position controls.</span></div></div><div class="coming panel"><span>⌁</span><h2>Sniper terminal</h2><p>Trading remains disabled until a compatible wallet is connected.</p><button class="wallet-btn">Connect Wallet</button></div></section>
+      <section id="watchlist" class="view tool-view"><div class="page-heading"><div><p>TRACKING</p><h1>Watchlist</h1><span>Your saved tokens will appear here.</span></div></div><div class="coming panel"><span>☆</span><h2>No saved tokens yet</h2><p>Use the scanner to find a token, then add it to your watchlist.</p></div></section>
+      <section id="analytics" class="view tool-view"><div class="page-heading"><div><p>PERFORMANCE</p><h1>Analytics</h1><span>Real-time performance and market intelligence.</span></div></div><div class="analytics-cards"><article class="panel"><small>WIN RATE</small><strong>78.6%</strong><div class="mini-chart"></div></article><article class="panel"><small>AVG. ENTRY SPEED</small><strong>1.8s</strong><div class="mini-chart alt"></div></article><article class="panel"><small>RISK FLAGS</small><strong>23</strong><div class="mini-chart"></div></article></div></section>
+      <section id="alerts" class="view tool-view"><div class="page-heading"><div><p>NOTIFICATIONS</p><h1>Alerts</h1><span>Create price, volume, and wallet activity alerts.</span></div></div><div class="coming panel"><span>♧</span><h2>Alert center</h2><p>Your configured alerts will show here.</p></div></section>
+      <section id="portfolio" class="view tool-view"><div class="page-heading"><div><p>POSITIONS</p><h1>Portfolio</h1><span>Connect your wallet to review holdings and performance.</span></div></div><div class="coming panel"><span>▣</span><h2>Portfolio unavailable</h2><p>No wallet is connected.</p><button class="wallet-btn">Connect Wallet</button></div></section>
+      <section id="settings" class="view tool-view"><div class="page-heading"><div><p>PREFERENCES</p><h1>Settings</h1><span>Manage appearance and dashboard behavior.</span></div></div><div class="settings-grid panel"><label>Compact mode <input type="checkbox"></label><label>Live transaction sound <input type="checkbox"></label><label>Default slippage <select><option>5%</option><option selected>10%</option><option>15%</option></select></label></div></section>
+    </main>
+  </div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>

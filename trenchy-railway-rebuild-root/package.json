@@ -1,0 +1,17 @@
+{
+  "name": "trenchy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trenchy Solana trading dashboard",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check public/app.js"
+  },
+  "engines": { "node": "20.x" },
+  "dependencies": {
+    "express": "4.21.2",
+    "ws": "8.18.3"
+  }
+}
