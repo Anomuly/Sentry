@@ -183,3 +183,95 @@ that is an engineering choice, not a legal clearance.
   inside a transaction someone is asked to sign is the kind of thing
   that erodes trust fast and may also carry its own disclosure
   obligations depending on jurisdiction.
+
+## Real candlestick + volume chart (v0.5)
+
+Replaced the DexScreener iframe with a chart drawn directly on canvas
+from real OHLCV data, using **GeckoTerminal's free public API**
+(CoinGecko's on-chain DEX arm — no API key required).
+
+I was wrong in an earlier version when I said live chart data required
+a paid subscription; that was true of PumpPortal's trade stream, but
+GeckoTerminal exposes OHLCV candles and volume for free. Attribution
+back to GeckoTerminal is appreciated by them and worth adding to the
+UI if this goes public.
+
+What you get: candlesticks with wicks, colored volume bars underneath,
+a price axis, hover tooltips with OHLC + volume per candle, timeframe
+switching (1m / 5m / 15m / 1H / 4H / 1D), and a 30-second auto-refresh
+on the selected token.
+
+**Real limitation:** GeckoTerminal only indexes tokens that have a
+liquidity pool. A Pump.fun token still on its bonding curve
+(pre-graduation) typically has no pool yet, so there is genuinely no
+chart to draw for the very newest launches — the UI says so plainly
+rather than showing an empty frame. Charts appear once a token
+graduates or otherwise gets an indexed pool.
+
+Requests are proxied and cached server-side (pools 10 min, candles
+20 s) because GeckoTerminal rate-limits to ~30 calls/min — without
+caching, a handful of open tabs would exhaust that immediately.
+
+## Terminal navigation
+
+The sidebar now has terminal-style tabs with live counts: Live,
+Rug Watch (flagged only), Clean, Pump.fun, and Robinhood. Counts
+update as tokens stream in.
+
+## Trade panel always visible
+
+Buy/Sell controls now render upfront in a disabled state with a
+"Connect Phantom to Trade" button, instead of hiding the entire
+trading UI behind wallet connection.
+
+## Scam detection signals (v0.6)
+
+Free-data checks, in rough order of how much they matter:
+
+**Critical (shown in red with a HONEYPOT RISK badge):**
+- **Freeze authority still active** — the deployer can freeze token
+  accounts, potentially leaving buyers unable to sell. This is the
+  classic honeypot setup and is the single highest-value check here.
+- **Mint authority not renounced** — the deployer can mint unlimited
+  supply and dilute every holder toward zero.
+
+**Serious:**
+- **Holder concentration** — top-10 and single-wallet share of visible
+  supply, via `getTokenLargestAccounts` (free RPC — an earlier version
+  of this README wrongly claimed this needed a paid indexer).
+- **Outsized creator launch buy** — deployer opening with a large buy
+  of their own token means they hold a big position from block zero.
+- **Bundled launch** — real transaction count against the bonding
+  curve in the first 15 seconds.
+- **Serial launcher** — creator wallet spinning up repeat tokens.
+
+**Notable:**
+- **Ticker squatting** — new token reusing the ticker of another live
+  token, a common trick to catch buyers pasting the wrong address.
+  Free, because Sentry already sees the entire launch stream.
+
+### Concentration caveat, stated plainly
+For a token still on its bonding curve, the largest token account is
+the curve itself holding unsold supply — normal, not a red flag — so
+it's excluded from the concentration math. The tradeoff: for a token
+that has already graduated, this excludes a genuine top holder and
+slightly understates concentration. Telling the two apart cleanly
+would need ~20 extra RPC calls per token, which the public endpoint
+won't sustain at Pump.fun's launch volume.
+
+### Rate limits are the binding constraint
+Deep scans are queued and paced (~1 every 1.5s, queue capped at 40)
+because public Solana RPC is shared and throttled. Under heavy launch
+volume some tokens get skipped rather than every scan failing. Setting
+`SOLANA_RPC_URL` to a dedicated endpoint (Helius has a free tier)
+raises this ceiling a lot and is the single best upgrade for detection
+coverage.
+
+### What still isn't covered
+- Wallet-funding-graph analysis (proving multiple early buyers were
+  funded from one source) — still needs a paid indexer.
+- LP lock / burn status.
+- Robinhood Chain gets far fewer checks than Solana: Blockscout's
+  token list doesn't expose a deployer, so serial-launcher detection
+  can't run there. Tokens on that chain are labeled accordingly
+  instead of being given a misleadingly clean score.

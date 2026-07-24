@@ -14,6 +14,8 @@ import { VersionedTransaction, TransactionMessage, SystemProgram, PublicKey } fr
 import { PumpFeed } from './pumpFeed.js';
 import { RobinhoodFeed } from './robinhoodFeed.js';
 import { RiskEngine } from './riskEngine.js';
+import { getOhlcv } from './chartData.js';
+import { DeepScanner } from './deepScan.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8080;
@@ -34,6 +36,7 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/live' });
 
 const engine = new RiskEngine();
+const deepScanner = new DeepScanner(engine, (token) => broadcast({ type: 'update', token }));
 const pumpFeed = new PumpFeed();
 const robinhoodFeed = new RobinhoodFeed();
 
@@ -57,6 +60,10 @@ pumpFeed.on('tokenCreated', (evt) => {
   if (evt.bondingCurveKey) {
     setTimeout(() => checkBundleActivity(evt.mint, evt.bondingCurveKey), 15_000);
   }
+
+  // Deeper on-chain checks (honeypot / mint authority / holder
+  // concentration) run on a paced queue — see deepScan.js.
+  deepScanner.schedule(record);
 });
 pumpFeed.on('trade', (evt) => {
   const record = engine.onTrade(evt);
@@ -87,9 +94,6 @@ async function checkBundleActivity(mint, bondingCurveKey) {
 robinhoodFeed.on('tokenCreated', (evt) => {
   const record = engine.onTokenCreated(evt);
   broadcast({ type: 'token', token: record });
-});
-robinhoodFeed.on('poolCreated', (evt) => {
-  broadcast({ type: 'poolCreated', chain: 'robinhood', ...evt });
 });
 robinhoodFeed.on('status', (status) => broadcast({ type: 'feedStatus', chain: 'robinhood', status }));
 
@@ -180,6 +184,25 @@ app.get('/api/lookup', async (req, res) => {
   }
 
   return res.json({ found: false, reason: "Doesn't match a Solana or Robinhood Chain address format." });
+});
+
+// OHLCV candles + volume for the chart. Proxied through the server so
+// the GeckoTerminal rate limit is shared and cached across all users
+// rather than hit once per browser tab.
+app.get('/api/chart', async (req, res) => {
+  const address = (req.query.address || '').trim();
+  const chain = (req.query.chain || 'solana').trim();
+  const timeframe = ['minute', 'hour', 'day'].includes(req.query.timeframe) ? req.query.timeframe : 'minute';
+  const aggregate = Number(req.query.aggregate) > 0 ? Number(req.query.aggregate) : 1;
+
+  if (!address) return res.status(400).json({ error: 'address required' });
+
+  try {
+    const data = await getOhlcv(chain, address, timeframe, aggregate, 120);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: 'Chart fetch failed: ' + err.message, candles: [] });
+  }
 });
 
 wss.on('connection', (ws) => {

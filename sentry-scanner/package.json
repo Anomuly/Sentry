@@ -9,7 +9,6 @@
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.3",
-    "ethers": "^6.13.0",
     "express": "^4.19.2",
     "ws": "^8.18.0"
   }
