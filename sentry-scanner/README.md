@@ -363,3 +363,51 @@ Added, all from data already available for free:
 
 These are left out rather than approximated. On a tool whose job is
 flagging scams, a fabricated number is worse than a missing one.
+
+## v1.0 — research-driven rewrite of the chart + infrastructure notes
+
+### Chart: replaced hand-rolled canvas with TradingView Lightweight Charts
+Writing a chart engine from scratch was the wrong call. TradingView
+publishes **Lightweight Charts** free under Apache 2.0 (~45KB), and
+it's what fomo uses too (their logo is visible in the reference
+screenshots). It handles zoom, pan, crosshair, auto-scaling, the time
+axis, and large datasets properly — all things the hand-rolled version
+did poorly.
+
+TradingView attribution is a license requirement and is satisfied via
+the `attributionLogo` chart option.
+
+Kept working on top of it: Price/MCap toggle, timeframe switching,
+graduation bar, and the bonding-curve data source.
+
+### The real bottleneck: public RPC
+Research finding worth acting on — public Solana RPC endpoints are
+capped around 100-200 req/s **shared per IP**, run **2-5 seconds
+behind chain head**, and suffer noisy-neighbor effects. That latency
+propagates into everything: curve price sampling, deep scans, holder
+lookups.
+
+**Set `SOLANA_RPC_URL` on Railway.** This is the single highest-impact
+change available and it's free:
+- **Alchemy** — 30M compute units/month (most generous free tier;
+  already powers Phantom, Solflare, Robinhood)
+- **dRPC** — 50M CU/month
+- **QuickNode** — 10M credits/month
+- **Helius** — 1M credits/month, 10 req/s (Solana-native, but the
+  tightest rate cap of the four)
+
+The server logs a warning at startup when this isn't set.
+
+### Worth considering next: a purpose-built Pump.fun data API
+Sentry currently stitches together PumpPortal (launches) + bonding
+curve reads (price) + GeckoTerminal (graduated charts) + raw RPC
+(holders, authorities). **Moralis publishes a dedicated Pump.fun API**
+covering OHLCV for both pre-bonded and bonded tokens, bonding status,
+swaps, and metadata in one place. Bitquery and Birdeye offer similar
+coverage.
+
+That would collapse four fragile integrations into one and unlock the
+things currently marked unavailable — real volume, buy/sell counts,
+holder PnL. It is a paid dependency, which is why it hasn't been
+adopted unilaterally; it's the obvious next step if this goes past
+prototype.

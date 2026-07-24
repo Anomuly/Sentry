@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sentry</title>
 <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.0.5/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   :root {
     --bg: #0A050C; --surface: #150A12; --surface-2: #1E0F1A; --surface-3: #281424;
@@ -153,8 +154,7 @@
   .ohlc { font-size: 10px; color: var(--text-faint); display: flex; gap: 10px; flex-wrap: wrap; }
   .ohlc b { color: var(--text); font-weight: 600; }
   .chartbox { flex: 1; position: relative; min-height: 200px; }
-  #chart, #chartOverlay { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-  #chartOverlay { pointer-events: none; z-index: 4; }
+  #chart { position: absolute; inset: 0; width: 100%; height: 100%; }
   .chartmsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 30px; color: var(--text-faint); font-size: 11.5px; line-height: 1.7; }
   .ttip { position: absolute; pointer-events: none; z-index: 6; background: rgba(10,5,12,0.96); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 10px; line-height: 1.6; white-space: nowrap; opacity: 0; transition: opacity .1s; }
   .ttip.show { opacity: 1; }
@@ -290,11 +290,8 @@
         </div>
       </div>
       <div class="chartbox">
-        <canvas id="chart"></canvas>
-        <canvas id="chartOverlay"></canvas>
-        <div class="ttip" id="ttip"></div>
+        <div id="chart"></div>
         <div class="chartmsg" id="chartmsg">Loading chart…</div>
-        <div class="charthint">scroll to zoom · drag to pan</div>
       </div>
       <div class="btmpanel">
         <div class="btmtabs" id="btmtabs">
@@ -339,9 +336,6 @@ const imageCache = new Map();
 let solUsd = null, filter = 'all', selectedId = null;
 let walletPubkey = null, side = 'buy', btmPanel = 'holders';
 let chartState = { tf: 'minute', agg: 1, candles: [], token: null };
-let chartValueMode = 'price'; // 'price' | 'mcap'
-let curveStats = {};
-const PUMP_SUPPLY = 1e9;
 let chartFetchId = 0;
 
 const scoreCls = s => s >= 70 ? 'up' : s >= 40 ? 'warn' : 'down';
@@ -422,6 +416,7 @@ function select(id){
   const t=tokens.get(id); if(!t) return;
   emptyState.style.display='none';
   coinView.style.display='flex';
+  destroyChart(); chartState.candles=[];
   renderCoinHead(t); renderRight(t); renderBtm(t); wireChart(t); loadChart(t);
 }
 
@@ -608,18 +603,183 @@ async function serverLookup(raw){
   }catch{ showToast('Lookup failed'); }
 }
 
+// ---------------- chart (TradingView Lightweight Charts) ----------------
+//
+// Replaced a hand-rolled canvas chart. Lightweight Charts is
+// TradingView's open-source library (Apache 2.0, ~45KB) and handles
+// zoom, pan, crosshair, auto-scaling and the time axis properly — all
+// things the hand-rolled version did badly. TradingView attribution is
+// a license requirement, satisfied by the attributionLogo option below.
+
+let lwChart = null, lwCandles = null, lwVolume = null;
+let chartValueMode = 'price';   // 'price' | 'mcap'
+let curveStats = {};
+const PUMP_SUPPLY = 1e9;
+
+function destroyChart() {
+  if (lwChart) { try { lwChart.remove(); } catch (e) {} }
+  lwChart = null; lwCandles = null; lwVolume = null;
+}
+
+function ensureChart() {
+  const el = document.getElementById('chart');
+  if (!el || typeof LightweightCharts === 'undefined') return null;
+  if (lwChart) return lwChart;
+
+  lwChart = LightweightCharts.createChart(el, {
+    layout: {
+      background: { color: 'transparent' },
+      textColor: '#B08696',
+      attributionLogo: true,
+      fontFamily: "ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
+    },
+    grid: {
+      vertLines: { color: 'rgba(255,255,255,0.04)' },
+      horzLines: { color: 'rgba(255,255,255,0.04)' },
+    },
+    rightPriceScale: { borderColor: '#3A1B2C', scaleMargins: { top: 0.08, bottom: 0.28 } },
+    timeScale: { borderColor: '#3A1B2C', timeVisible: true, secondsVisible: true, rightOffset: 4 },
+    crosshair: {
+      mode: LightweightCharts.CrosshairMode ? LightweightCharts.CrosshairMode.Normal : 0,
+      vertLine: { color: '#FF3D68', width: 1, style: 2, labelBackgroundColor: '#FF3D68' },
+      horzLine: { color: '#FF3D68', width: 1, style: 2, labelBackgroundColor: '#FF3D68' },
+    },
+    handleScroll: true,
+    handleScale: true,
+    autoSize: true,
+  });
+
+  // v5 uses addSeries(SeriesType, opts); v4 used addCandlestickSeries().
+  // Support both so a CDN version bump doesn't silently break the chart.
+  const candleOpts = {
+    upColor: '#00E5A0', downColor: '#FF2D4E',
+    borderUpColor: '#00E5A0', borderDownColor: '#FF2D4E',
+    wickUpColor: '#00E5A0', wickDownColor: '#FF2D4E',
+  };
+  if (typeof lwChart.addSeries === 'function' && LightweightCharts.CandlestickSeries) {
+    lwCandles = lwChart.addSeries(LightweightCharts.CandlestickSeries, candleOpts);
+    lwVolume = lwChart.addSeries(LightweightCharts.HistogramSeries, {
+      priceFormat: { type: 'volume' }, priceScaleId: 'vol',
+    });
+  } else {
+    lwCandles = lwChart.addCandlestickSeries(candleOpts);
+    lwVolume = lwChart.addHistogramSeries({ priceFormat: { type: 'volume' }, priceScaleId: 'vol' });
+  }
+  lwChart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+  lwChart.subscribeCrosshairMove(function (param) {
+    const ohlc = document.getElementById('ohlc');
+    if (!ohlc) return;
+    if (!param || !param.time || !param.seriesData) { updateOhlcReadout(); return; }
+    const d = param.seriesData.get(lwCandles);
+    if (!d) { updateOhlcReadout(); return; }
+    const f = chartValueMode === 'mcap' ? fmtUsd : fmtPrice;
+    const chg = ((d.close - d.open) / d.open) * 100;
+    ohlc.innerHTML =
+      '<span>O <b>' + f(d.open) + '</b></span><span>H <b>' + f(d.high) + '</b></span>' +
+      '<span>L <b>' + f(d.low) + '</b></span><span>C <b>' + f(d.close) + '</b></span>' +
+      '<span class="' + (chg >= 0 ? 'up' : 'down') + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>';
+  });
+
+  return lwChart;
+}
+
+function applyChartData() {
+  if (!ensureChart() || !chartState.candles.length) return;
+  const mult = chartValueMode === 'mcap' && solUsd ? solUsd * PUMP_SUPPLY : 1;
+  const seen = new Set();
+  const data = [], vols = [];
+
+  for (const c of chartState.candles) {
+    // Lightweight Charts requires strictly ascending, unique timestamps.
+    if (seen.has(c.t)) continue;
+    seen.add(c.t);
+    data.push({ time: c.t, open: c.o * mult, high: c.h * mult, low: c.l * mult, close: c.c * mult });
+    if (c.v != null) {
+      vols.push({ time: c.t, value: c.v, color: c.c >= c.o ? 'rgba(0,229,160,0.4)' : 'rgba(255,45,78,0.4)' });
+    }
+  }
+  data.sort(function (a, b) { return a.time - b.time; });
+  vols.sort(function (a, b) { return a.time - b.time; });
+
+  lwCandles.setData(data);
+  lwVolume.setData(vols); // empty array simply hides the volume pane
+  lwCandles.applyOptions({
+    priceFormat: chartValueMode === 'mcap'
+      ? { type: 'price', precision: 0, minMove: 1 }
+      : { type: 'price', precision: 9, minMove: 0.000000001 },
+  });
+
+  if (chartState.resetViewport) {
+    lwChart.timeScale().fitContent();
+    chartState.resetViewport = false;
+  }
+  updateOhlcReadout();
+}
+
+function updateOhlcReadout() {
+  const ohlc = document.getElementById('ohlc');
+  if (!ohlc || !chartState.candles.length) return;
+  const mult = chartValueMode === 'mcap' && solUsd ? solUsd * PUMP_SUPPLY : 1;
+  const f = chartValueMode === 'mcap' ? fmtUsd : fmtPrice;
+  const k = chartState.candles;
+  const last = k[k.length - 1], first = k[0];
+  const chg = ((last.c - first.o) / first.o) * 100;
+  const hasVol = k.some(function (c) { return c.v != null; });
+  const tv = k.reduce(function (s, c) { return s + (c.v || 0); }, 0);
+  ohlc.innerHTML =
+    '<span>O <b>' + f(last.o * mult) + '</b></span><span>H <b>' + f(last.h * mult) + '</b></span>' +
+    '<span>L <b>' + f(last.l * mult) + '</b></span><span>C <b>' + f(last.c * mult) + '</b></span>' +
+    '<span class="' + (chg >= 0 ? 'up' : 'down') + '">' + (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%</span>' +
+    (hasVol ? '<span>VOL <b>' + fmtVol(tv) + '</b></span>' : '');
+}
+
+function bindChartControls() {
+  const bp = document.getElementById('btnPrice');
+  const bm = document.getElementById('btnMcap');
+  if (bp && !bp.dataset.bound) {
+    bp.dataset.bound = '1';
+    bp.onclick = function () { chartValueMode = 'price'; bp.classList.add('on'); if (bm) bm.classList.remove('on'); applyChartData(); };
+  }
+  if (bm && !bm.dataset.bound) {
+    bm.dataset.bound = '1';
+    bm.onclick = function () {
+      if (!solUsd) { showToast('Waiting on SOL price — try again shortly'); return; }
+      chartValueMode = 'mcap'; bm.classList.add('on'); if (bp) bp.classList.remove('on'); applyChartData();
+    };
+  }
+  const fit = document.getElementById('btnFit');
+  if (fit && !fit.dataset.bound) {
+    fit.dataset.bound = '1';
+    fit.onclick = function () { if (lwChart) lwChart.timeScale().fitContent(); };
+  }
+  // Lightweight Charts has no direct zoom API; nudging the visible
+  // logical range achieves the same thing.
+  const nudge = function (factor) {
+    if (!lwChart) return;
+    const ts = lwChart.timeScale();
+    const r = ts.getVisibleLogicalRange();
+    if (!r) return;
+    const mid = (r.from + r.to) / 2, half = (r.to - r.from) / 2 * factor;
+    ts.setVisibleLogicalRange({ from: mid - half, to: mid + half });
+  };
+  const zi = document.getElementById('btnZoomIn');
+  const zo = document.getElementById('btnZoomOut');
+  if (zi && !zi.dataset.bound) { zi.dataset.bound = '1'; zi.onclick = function () { nudge(1 / 1.4); }; }
+  if (zo && !zo.dataset.bound) { zo.dataset.bound = '1'; zo.onclick = function () { nudge(1.4); }; }
+}
+
 async function loadChart(t){
-  if(!chartState.token || chartState.token.id !== t.id) chartState.resetView = true;
+  if(!chartState.token || chartState.token.id !== t.id) chartState.resetViewport = true;
   chartState.token=t;
   const id=++chartFetchId;
-  const msg=document.getElementById('chartmsg'), ohlc=document.getElementById('ohlc');
-  if(msg){ msg.style.display='flex'; msg.textContent='Loading chart…'; }
-  if(ohlc) ohlc.innerHTML='';
+  const msg=document.getElementById('chartmsg');
+  if(msg && !chartState.candles.length){ msg.style.display='flex'; msg.textContent='Loading chart…'; }
+  bindChartControls();
   try{
     const r=await fetch(`/api/chart?address=${encodeURIComponent(t.id)}&chain=${t.chain}&timeframe=${chartState.tf}&aggregate=${chartState.agg}`);
     const d=await r.json();
     if(id!==chartFetchId) return;
-    const prevLen = chartState.candles.length;
     chartState.candles=d.candles||[];
     chartState.source=d.source||'pool';
     if(d.source==='curve'){
@@ -629,349 +789,17 @@ async function loadChart(t){
     } else {
       const gw=document.getElementById('gradwrap'); if(gw) gw.style.display='none';
     }
-    // Preserve the user's zoom/pan across refreshes. Only reset the
-    // viewport when switching token/timeframe, not when new candles
-    // stream in — otherwise zooming in would be undone every 30s.
-    if(chartState.resetView || !prevLen){
-      view.count = chartState.candles.length;
-      view.start = 0;
-      setFollow(true);
-      chartState.resetView = false;
-    }
-    bindChartInteraction();
     if(!chartState.candles.length){
       if(msg){ msg.style.display='flex'; msg.textContent=d.reason||'No chart data yet.'; }
-      const cv=document.getElementById('chart'); if(cv) cv.getContext('2d').clearRect(0,0,cv.width,cv.height);
+      destroyChart();
       return;
     }
     if(msg) msg.style.display='none';
-    drawChart();
+    applyChartData();
   }catch{
     if(id!==chartFetchId) return;
-    if(msg){ msg.style.display='flex'; msg.textContent='Chart failed to load.'; }
+    if(msg && !chartState.candles.length){ msg.style.display='flex'; msg.textContent='Chart failed to load.'; }
   }
-}
-
-// ---- interactive chart state ----
-// view.start = index of leftmost visible candle (float, allows smooth pan)
-// view.count = how many candles fit in the viewport (zoom level)
-// follow = keep pinned to the newest candle as data streams in
-let view = { start: 0, count: 0, follow: true };
-let cross = { x: null, y: null, active: false };
-let drag = { on: false, x0: 0, start0: 0 };
-let panRaf = null;
-const MIN_CANDLES = 8;   // hard zoom-in limit
-const PAD = { L: 10, R: 64, T: 10, B: 20 };
-
-function chartGeom(cv) {
-  const box = cv.parentElement;
-  return { W: box.clientWidth, H: box.clientHeight };
-}
-
-function clampView() {
-  const n = chartState.candles.length;
-  if (!n) return;
-  view.count = Math.max(MIN_CANDLES, Math.min(n, view.count || n));
-  view.start = Math.max(0, Math.min(n - view.count, view.start));
-}
-
-function visibleSlice() {
-  clampView();
-  const s = Math.floor(view.start);
-  return { s, e: Math.min(chartState.candles.length, s + Math.ceil(view.count)) };
-}
-
-function drawChart() {
-  const cv = document.getElementById('chart');
-  if (!cv || !chartState.candles.length) return;
-
-  const dpr = window.devicePixelRatio || 1;
-  const { W, H } = chartGeom(cv);
-  cv.width = W * dpr; cv.height = H * dpr;
-  const g = cv.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, W, H);
-
-  const all = chartState.candles;
-  if (!view.count) view.count = all.length;
-  if (view.follow) view.start = Math.max(0, all.length - view.count);
-  clampView();
-
-  const { s, e } = visibleSlice();
-  let k = all.slice(s, e);
-  if (!k.length) return;
-
-  // Market-cap mode is a pure display transform: mcap = price × supply,
-  // and supply is fixed at 1B for Pump.fun tokens. Candle shape is
-  // identical, only the axis scale changes.
-  if (chartValueMode === 'mcap') {
-    const mult = (solUsd || 0) * PUMP_SUPPLY;
-    if (mult > 0) k = k.map(c => ({ ...c, o: c.o*mult, h: c.h*mult, l: c.l*mult, c: c.c*mult }));
-  }
-
-  const volH = Math.round(H * 0.2);
-  const priceH = H - PAD.T - PAD.B - volH - 8;
-  let hi = Math.max(...k.map(c => c.h)), lo = Math.min(...k.map(c => c.l));
-  if (hi === lo) { hi *= 1.02; lo *= 0.98; }
-  const pd = (hi - lo) * 0.08; hi += pd; lo -= pd;
-  const maxV = Math.max(...k.map(c => c.v || 0), 1);
-
-  const plotW = W - PAD.L - PAD.R;
-  const step = plotW / view.count;
-  const bw = Math.max(1, Math.min(14, step * 0.62));
-  const yP = p => PAD.T + (1 - (p - lo) / (hi - lo)) * priceH;
-  const yV = v => PAD.T + priceH + 8 + volH - (v / maxV) * volH;
-  const xAt = i => PAD.L + (i - view.start) * step + step / 2;
-
-  g.font = '9.5px ui-monospace, monospace';
-  g.textBaseline = 'middle';
-
-  // price grid + axis
-  for (let i = 0; i <= 4; i++) {
-    const p = lo + (hi - lo) * (i / 4), y = yP(p);
-    g.strokeStyle = 'rgba(255,255,255,0.045)';
-    g.beginPath(); g.moveTo(PAD.L, y); g.lineTo(W - PAD.R, y); g.stroke();
-    g.fillStyle = '#6E4351'; g.fillText(chartValueMode==='mcap'?fmtUsd(p):fmtPrice(p), W - PAD.R + 6, y);
-  }
-
-  // time axis (a few evenly spaced labels)
-  const ticks = Math.max(2, Math.min(6, Math.floor(plotW / 90)));
-  g.textAlign = 'center';
-  for (let i = 0; i <= ticks; i++) {
-    const idx = Math.floor(view.start + (view.count - 1) * (i / ticks));
-    const c = all[Math.max(0, Math.min(all.length - 1, idx))];
-    if (!c) continue;
-    const x = xAt(idx);
-    if (x < PAD.L || x > W - PAD.R) continue;
-    const d = new Date(c.t * 1000);
-    g.fillStyle = '#6E4351';
-    g.fillText(d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'), x, H - 9);
-  }
-  g.textAlign = 'left';
-
-  // volume — only when the data source actually provides it. Bonding
-  // curve data gives price but not per-trade size, so rather than
-  // inventing bars from price movement, the volume lane is left out.
-  const hasVolume = k.some(c => c.v != null);
-  if (hasVolume) {
-    k.forEach((c, i) => {
-      const gi = s + i;
-      const x = xAt(gi) - bw / 2;
-      if (x + bw < PAD.L || x > W - PAD.R) return;
-      g.fillStyle = c.c >= c.o ? 'rgba(0,229,160,0.32)' : 'rgba(255,45,78,0.32)';
-      const y = yV(c.v || 0);
-      g.fillRect(x, y, bw, (PAD.T + priceH + 8 + volH) - y);
-    });
-  }
-
-  // candles
-  k.forEach((c, i) => {
-    const gi = s + i;
-    const xc = xAt(gi);
-    if (xc < PAD.L - bw || xc > W - PAD.R + bw) return;
-    const x = xc - bw / 2, up = c.c >= c.o;
-    const col = up ? '#00E5A0' : '#FF2D4E';
-    g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 1;
-    g.beginPath(); g.moveTo(xc, yP(c.h)); g.lineTo(xc, yP(c.l)); g.stroke();
-    const yo = yP(c.o), yc2 = yP(c.c);
-    g.fillRect(x, Math.min(yo, yc2), bw, Math.max(1, Math.abs(yc2 - yo)));
-  });
-
-  // volume divider + label
-  g.strokeStyle = 'rgba(255,255,255,0.06)';
-  g.beginPath(); g.moveTo(PAD.L, PAD.T + priceH + 4); g.lineTo(W - PAD.R, PAD.T + priceH + 4); g.stroke();
-  g.fillStyle = '#6E4351';
-  g.fillText(hasVolume ? 'VOL ' + fmtVol(maxV) : 'bonding curve price — volume needs the paid trade stream', PAD.L + 2, PAD.T + priceH + 16);
-
-  // last-price marker line
-  const rawLast = all[all.length - 1];
-  const mult = chartValueMode === 'mcap' ? (solUsd || 0) * PUMP_SUPPLY : 1;
-  const last = rawLast && mult ? { ...rawLast, c: rawLast.c * (chartValueMode==='mcap'?mult:1), o: rawLast.o } : rawLast;
-  const lastVisible = last && (all.length - 1) >= view.start && (all.length - 1) < view.start + view.count;
-  if (lastVisible) {
-    const y = yP(last.c);
-    g.setLineDash([3, 3]);
-    g.strokeStyle = last.c >= last.o ? 'rgba(0,229,160,0.55)' : 'rgba(255,45,78,0.55)';
-    g.beginPath(); g.moveTo(PAD.L, y); g.lineTo(W - PAD.R, y); g.stroke();
-    g.setLineDash([]);
-    g.fillStyle = last.c >= last.o ? '#00E5A0' : '#FF2D4E';
-    g.fillRect(W - PAD.R + 2, y - 7, PAD.R - 4, 14);
-    g.fillStyle = '#0A050C';
-    g.fillText(chartValueMode==='mcap'?fmtUsd(last.c):fmtPrice(last.c), W - PAD.R + 6, y);
-  }
-
-  // Cache the geometry the overlay needs so the crosshair can be drawn
-  // without recomputing or repainting the candles.
-  lastGeom = { W, H, lo, hi, priceH, step, volH };
-
-  updateOhlcReadout(k);
-}
-
-let lastGeom = null;
-
-// Crosshair lives on its own canvas. Redrawing every candle on every
-// mousemove was the reason the chart felt sluggish — this repaints only
-// two lines and a label instead.
-function drawOverlay() {
-  const ov = document.getElementById('chartOverlay');
-  if (!ov || !lastGeom) return;
-  const dpr = window.devicePixelRatio || 1;
-  const { W, H, lo, hi, priceH } = lastGeom;
-  if (ov.width !== W * dpr || ov.height !== H * dpr) {
-    ov.width = W * dpr; ov.height = H * dpr;
-  }
-  const g = ov.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, W, H);
-  if (!cross.active || cross.x == null) return;
-
-  g.font = '9.5px ui-monospace, monospace';
-  g.textBaseline = 'middle';
-  g.setLineDash([2, 3]);
-  g.strokeStyle = 'rgba(246,233,239,0.4)';
-  g.beginPath(); g.moveTo(cross.x, PAD.T); g.lineTo(cross.x, H - PAD.B); g.stroke();
-
-  if (cross.y != null && cross.y > PAD.T && cross.y < PAD.T + priceH) {
-    g.beginPath(); g.moveTo(PAD.L, cross.y); g.lineTo(W - PAD.R, cross.y); g.stroke();
-    const pv = lo + (1 - (cross.y - PAD.T) / priceH) * (hi - lo);
-    g.setLineDash([]);
-    g.fillStyle = '#281424';
-    g.fillRect(W - PAD.R + 2, cross.y - 7, PAD.R - 4, 14);
-    g.fillStyle = '#F6E9EF';
-    g.fillText(chartValueMode==='mcap'?fmtUsd(pv):fmtPrice(pv), W - PAD.R + 6, cross.y);
-  }
-  g.setLineDash([]);
-}
-
-function updateOhlcReadout(k) {
-  const ohlc = document.getElementById('ohlc');
-  if (!ohlc || !k.length) return;
-  const f = chartValueMode === 'mcap' ? fmtUsd : fmtPrice;
-  const last = k[k.length - 1], first = k[0];
-  const chg = ((last.c - first.o) / first.o) * 100;
-  const tv = k.reduce((s, c) => s + (c.v || 0), 0);
-  const hasVol = k.some(c => c.v != null);
-  ohlc.innerHTML =
-    `<span>O <b>${f(last.o)}</b></span><span>H <b>${f(last.h)}</b></span>` +
-    `<span>L <b>${f(last.l)}</b></span><span>C <b>${f(last.c)}</b></span>` +
-    `<span class="${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>` +
-    (hasVol ? `<span>VOL <b>${fmtVol(tv)}</b></span>` : '');
-}
-
-function setFollow(on) {
-  view.follow = on;
-  const b = document.getElementById('btnFollow');
-  if (b) b.classList.toggle('on', on);
-}
-
-function bindChartInteraction() {
-  const cv = document.getElementById('chart');
-  if (!cv || cv.dataset.bound) return;
-  cv.dataset.bound = '1';
-
-  // ---- wheel zoom, anchored on the candle under the cursor ----
-  cv.addEventListener('wheel', e => {
-    if (!chartState.candles.length) return;
-    e.preventDefault();
-    const { W } = chartGeom(cv);
-    const plotW = W - PAD.L - PAD.R;
-    const rect = cv.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const frac = Math.max(0, Math.min(1, (mx - PAD.L) / plotW));
-    const anchor = view.start + frac * view.count;
-
-    const factor = e.deltaY > 0 ? 1.18 : 1 / 1.18;
-    const n = chartState.candles.length;
-    const next = Math.max(MIN_CANDLES, Math.min(n, view.count * factor));
-    view.start = anchor - frac * next;
-    view.count = next;
-    setFollow(false);
-    clampView();
-    drawChart();
-  }, { passive: false });
-
-  // ---- drag to pan ----
-  cv.addEventListener('mousedown', e => {
-    drag.on = true;
-    drag.x0 = e.clientX;
-    drag.start0 = view.start;
-    cv.classList.add('grabbing');
-    setFollow(false);
-  });
-  window.addEventListener('mouseup', () => {
-    drag.on = false;
-    cv.classList.remove('grabbing');
-  });
-
-  cv.addEventListener('mousemove', e => {
-    const rect = cv.getBoundingClientRect();
-    const { W } = chartGeom(cv);
-    const plotW = W - PAD.L - PAD.R;
-    const step = plotW / view.count;
-
-    if (drag.on) {
-      const dx = e.clientX - drag.x0;
-      view.start = drag.start0 - dx / step;
-      clampView();
-      // Coalesce pan redraws to one per animation frame instead of one
-      // per mousemove event — mousemove can fire far faster than the
-      // display refreshes.
-      if (!panRaf) panRaf = requestAnimationFrame(() => { panRaf = null; drawChart(); drawOverlay(); });
-      return;
-    }
-
-    cross.x = e.clientX - rect.left;
-    cross.y = e.clientY - rect.top;
-    cross.active = true;
-
-    const idx = Math.round(view.start + (cross.x - PAD.L) / step - 0.5);
-    const c = chartState.candles[idx];
-    const tip = document.getElementById('ttip');
-    if (tip) {
-      if (c) {
-        const d = new Date(c.t * 1000);
-        const volLine = c.v == null ? '' : `<br>Vol ${fmtVol(c.v)}`;
-        tip.innerHTML = `${d.toLocaleTimeString()}<br>O ${fmtPrice(c.o)} H ${fmtPrice(c.h)}<br>L ${fmtPrice(c.l)} C ${fmtPrice(c.c)}${volLine}`;
-        tip.style.left = Math.min(cross.x + 14, W - 160) + 'px';
-        tip.style.top = '10px';
-        tip.classList.add('show');
-      } else tip.classList.remove('show');
-    }
-    drawOverlay(); // cheap — no candle repaint
-  });
-
-  cv.addEventListener('mouseleave', () => {
-    cross.active = false;
-    const tip = document.getElementById('ttip');
-    if (tip) tip.classList.remove('show');
-    drawOverlay();
-  });
-
-  // ---- double-click resets to fit ----
-  cv.addEventListener('dblclick', () => {
-    view.count = chartState.candles.length;
-    view.start = 0;
-    setFollow(true);
-    drawChart();
-  });
-
-  // ---- toolbar buttons ----
-  const bp = document.getElementById('btnPrice');
-  const bm = document.getElementById('btnMcap');
-  if (bp) bp.onclick = () => { chartValueMode='price'; bp.classList.add('on'); if(bm) bm.classList.remove('on'); drawChart(); drawOverlay(); };
-  if (bm) bm.onclick = () => {
-    if (!solUsd) { showToast('Waiting on SOL price — try again in a moment'); return; }
-    chartValueMode='mcap'; bm.classList.add('on'); if(bp) bp.classList.remove('on'); drawChart(); drawOverlay();
-  };
-
-  const zi = document.getElementById('btnZoomIn');
-  const zo = document.getElementById('btnZoomOut');
-  const fit = document.getElementById('btnFit');
-  const fol = document.getElementById('btnFollow');
-  if (zi) zi.onclick = () => { const mid = view.start + view.count / 2; view.count = Math.max(MIN_CANDLES, view.count / 1.4); view.start = mid - view.count / 2; setFollow(false); clampView(); drawChart(); };
-  if (zo) zo.onclick = () => { const mid = view.start + view.count / 2; view.count = Math.min(chartState.candles.length, view.count * 1.4); view.start = mid - view.count / 2; setFollow(false); clampView(); drawChart(); };
-  if (fit) fit.onclick = () => { view.count = chartState.candles.length; view.start = 0; setFollow(false); drawChart(); };
-  if (fol) fol.onclick = () => { setFollow(!view.follow); if (view.follow) { view.start = Math.max(0, chartState.candles.length - view.count); } drawChart(); };
 }
 
 function wireChart(t){
@@ -979,21 +807,17 @@ function wireChart(t){
   g.querySelectorAll('.tf').forEach(b=>{
     b.classList.toggle('active',b.dataset.tf===chartState.tf&&+b.dataset.agg===chartState.agg);
     b.onclick=()=>{
-      chartState.tf=b.dataset.tf; chartState.agg=+b.dataset.agg; chartState.resetView=true;
+      chartState.tf=b.dataset.tf; chartState.agg=+b.dataset.agg; chartState.resetViewport=true;
       g.querySelectorAll('.tf').forEach(x=>x.classList.remove('active'));
       b.classList.add('active'); loadChart(t);
     };
   });
+  bindChartControls();
 }
-window.addEventListener('resize',()=>{ if(chartState.candles.length) drawChart(); });
-// Curve data samples every ~2s server-side, so refresh at a matching
-// cadence when that's the source; pool data changes far slower.
-setInterval(()=>{
-  if(chartState.token && selectedId===chartState.token.id && chartState.source==='curve') loadChart(chartState.token);
-}, 3000);
-setInterval(()=>{
-  if(chartState.token && selectedId===chartState.token.id && chartState.source!=='curve') loadChart(chartState.token);
-}, 30000);
+
+// Chart refresh cadence follows the data source.
+setInterval(()=>{ if(chartState.token&&selectedId===chartState.token.id&&chartState.source==='curve') loadChart(chartState.token); },3000);
+setInterval(()=>{ if(chartState.token&&selectedId===chartState.token.id&&chartState.source!=='curve') loadChart(chartState.token); },30000);
 
 function b64ToBytes(b64){ const bin=atob(b64), out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
 async function connectPhantom(){

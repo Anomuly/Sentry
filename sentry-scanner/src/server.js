@@ -29,6 +29,16 @@ const PORT = process.env.PORT || 8080;
 const FEE_WALLET = process.env.FEE_WALLET_ADDRESS || null;
 const FEE_BPS = Number(process.env.FEE_BPS || 0); // basis points, e.g. 50 = 0.5%
 
+// Public Solana RPC is rate limited (~100-200 req/s shared per IP) and
+// runs 2-5 seconds behind chain head. That latency is felt everywhere
+// downstream. Setting SOLANA_RPC_URL to a dedicated endpoint is the
+// single highest-impact upgrade available — Alchemy's free tier (30M
+// compute units/month) and Helius's (1M credits) both work.
+const RPC_URL = RPC_URL;
+if (!process.env.SOLANA_RPC_URL) {
+  console.warn('[server] Using public Solana RPC — rate limited and ~2-5s behind chain head. Set SOLANA_RPC_URL for materially better performance.');
+}
+
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -76,7 +86,7 @@ pumpFeed.on('status', (status) => broadcast({ type: 'feedStatus', chain: 'solana
 
 async function checkBundleActivity(mint, bondingCurveKey) {
   try {
-    const rpcRes = await fetch('https://api.mainnet-beta.solana.com', {
+    const rpcRes = await fetch(RPC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -160,7 +170,7 @@ app.get('/api/lookup', async (req, res) => {
 
   if (isSolana) {
     try {
-      const rpcRes = await fetch('https://api.mainnet-beta.solana.com', {
+      const rpcRes = await fetch(RPC_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
