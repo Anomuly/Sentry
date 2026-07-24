@@ -275,3 +275,26 @@ coverage.
   token list doesn't expose a deployer, so serial-launcher detection
   can't run there. Tokens on that chain are labeled accordingly
   instead of being given a misleadingly clean score.
+
+## Interactive chart (v0.7)
+
+The chart is no longer a static image. Interactions:
+
+- **Scroll wheel** — zoom in/out, anchored on the candle under the
+  cursor (so the thing you're pointing at stays put)
+- **Click + drag** — pan through history
+- **Double-click** — reset to fit all candles
+- **Crosshair** — follows the cursor with a live price label on the
+  right axis and an OHLCV tooltip for the hovered candle
+- **Toolbar** — zoom in / zoom out / Fit / Live toggle
+- **Last-price marker** — dashed line with a colored price tag
+- **Time axis** — labels along the bottom, spaced to fit the width
+
+Zoom and pan persist across the 30-second auto-refresh. The viewport
+only resets when you switch token or timeframe — an earlier version
+would have thrown away your zoom every refresh, which would have made
+zooming useless in practice.
+
+"Live" mode keeps the view pinned to the newest candle as data streams
+in; it turns itself off as soon as you manually zoom or pan, so the
+chart doesn't yank away from what you're looking at.

@@ -205,6 +205,40 @@ app.get('/api/chart', async (req, res) => {
   }
 });
 
+// Top holders for the holders panel. Free public RPC.
+// Returns token ACCOUNT addresses (not owner wallets) — resolving each
+// to its owner would cost ~20 extra RPC calls per request, which the
+// public endpoint won't sustain. Labeled as such in the UI.
+app.get('/api/holders', async (req, res) => {
+  const address = (req.query.address || '').trim();
+  if (!address) return res.status(400).json({ error: 'address required' });
+
+  try {
+    const rpcRes = await fetch(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'getTokenLargestAccounts', params: [address],
+      }),
+    });
+    const json = await rpcRes.json();
+    const accounts = json?.result?.value || [];
+    const total = accounts.reduce((s, a) => s + (Number(a.uiAmount) || 0), 0);
+
+    res.json({
+      holders: accounts.map((a, i) => ({
+        account: a.address,
+        amount: Number(a.uiAmount) || 0,
+        share: total > 0 ? ((Number(a.uiAmount) || 0) / total) * 100 : 0,
+        isLikelyCurve: i === 0, // largest is usually the bonding curve pre-graduation
+      })),
+      total,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message, holders: [] });
+  }
+});
+
 wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'snapshot', tokens: engine.getRecent(150) }));
   if (engine.solUsd) ws.send(JSON.stringify({ type: 'solPrice', usd: engine.solUsd }));
