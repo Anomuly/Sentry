@@ -55,6 +55,26 @@ robinhoodFeed.on('poolCreated', (evt) => {
 });
 robinhoodFeed.on('status', (status) => broadcast({ type: 'feedStatus', chain: 'robinhood', status }));
 
+// --- SOL/USD price, refreshed periodically ---
+// Needed to convert on-chain SOL market caps into dollar figures. Public,
+// no API key required. If this fails (rate limit, network hiccup), market
+// caps just stay SOL-denominated on the dashboard rather than breaking.
+async function refreshSolPrice() {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+    const data = await res.json();
+    const price = data?.solana?.usd;
+    if (typeof price === 'number') {
+      engine.setSolUsdPrice(price);
+      broadcast({ type: 'solPrice', usd: price });
+    }
+  } catch (err) {
+    console.error('[server] SOL price fetch failed:', err.message);
+  }
+}
+refreshSolPrice();
+setInterval(refreshSolPrice, 60_000);
+
 // REST snapshot for anything that just wants current state (e.g. page load)
 app.get('/api/feed', (_req, res) => {
   res.json(engine.getRecent(100));
@@ -62,6 +82,7 @@ app.get('/api/feed', (_req, res) => {
 
 wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'snapshot', tokens: engine.getRecent(50) }));
+  if (engine.solUsd) ws.send(JSON.stringify({ type: 'solPrice', usd: engine.solUsd }));
 });
 
 server.listen(PORT, () => {

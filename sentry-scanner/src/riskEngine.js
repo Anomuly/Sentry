@@ -12,12 +12,24 @@
 const RUG_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 const BUNDLE_WINDOW_MS = 15 * 1000; // first 15s after launch = highest bundle risk
 
+// Pump.fun tokens are minted with a fixed total supply of 1 billion at
+// creation (standard across the platform, both pre- and post-migration).
+// This lets us compute a real market cap from just the last trade price,
+// without needing a paid indexer to read on-chain supply.
+const PUMPFUN_TOTAL_SUPPLY = 1_000_000_000;
+
 export class RiskEngine {
   constructor() {
-    // creator wallet -> [{mint, createdAt}]  (serial-rugger detection)
+    // creator wallet -> [{id, createdAt}]  (serial-rugger detection)
     this.creatorHistory = new Map();
-    // mint -> { createdAt, creator, trades: [], score, flags: [] }
+    // id -> { createdAt, creator, trades: [], score, flags: [] }
     this.tokens = new Map();
+    // SOL/USD, refreshed periodically by the server — null until first fetch succeeds.
+    this.solUsd = null;
+  }
+
+  setSolUsdPrice(price) {
+    this.solUsd = price;
   }
 
   onTokenCreated(evt) {
@@ -33,6 +45,9 @@ export class RiskEngine {
       trades: [],
       score: 100,
       flags: [],
+      priceSol: null,
+      marketCapSol: null,
+      marketCapUsd: null,
     };
     this.tokens.set(id, record);
 
@@ -46,7 +61,7 @@ export class RiskEngine {
       record.flags.push(`Creator has launched ${recent.length} other token(s) in 24h`);
       record.score -= 12;
     }
-    recent.push({ mint: evt.mint, createdAt: evt.createdAt });
+    recent.push({ id, createdAt: evt.createdAt });
     this.creatorHistory.set(evt.creator, recent);
 
     return record;
@@ -59,6 +74,18 @@ export class RiskEngine {
 
     record.trades.push(evt);
     const ageMs = evt.timestamp - record.createdAt;
+
+    // --- Price / market cap ---
+    // Pump.fun trade events carry solAmount (SOL paid/received) and
+    // tokenAmount (tokens bought/sold) for that single trade — price is
+    // just their ratio. Only meaningful for Solana/Pump.fun right now;
+    // Robinhood Chain doesn't have trade-level data wired in yet (that
+    // needs Uniswap swap-event parsing, a separate piece of work).
+    if (record.chain === 'solana' && evt.solAmount > 0 && evt.tokenAmount > 0) {
+      record.priceSol = evt.solAmount / evt.tokenAmount;
+      record.marketCapSol = record.priceSol * PUMPFUN_TOTAL_SUPPLY;
+      record.marketCapUsd = this.solUsd ? record.marketCapSol * this.solUsd : null;
+    }
 
     // --- TIER 1: bundle/sniper clustering ---
     // Real bundling requires tracing whether many early-buyer wallets share
