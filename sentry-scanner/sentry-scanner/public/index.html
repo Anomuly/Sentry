@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentry — Live Scan</title>
+<style>
+  :root {
+    --bg: #07090E; --surface: #10141D; --surface-2: #171D29; --line: #232A3A;
+    --text: #EDF1F8; --text-dim: #8B93A7; --text-faint: #565F73;
+    --signal: #00E5A0; --danger: #FF4368; --amber: #FFB84D;
+    --sol-a: #14F195; --sol-b: #9945FF;
+    --rh: #00C805;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    --disp: -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); }
+
+  /* ---- background texture: subtle scanning grid ---- */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.035) 1px, transparent 0);
+    background-size: 28px 28px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    padding: 16px 22px;
+    background: rgba(7,9,14,0.85);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .head-row { display: flex; justify-content: space-between; align-items: center; }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand svg { width: 22px; height: 22px; }
+  .brand h1 { font-family: var(--disp); font-weight: 700; font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+
+  .chain-status { display: flex; gap: 14px; }
+  .chip {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 10.5px; letter-spacing: 0.04em; font-weight: 600;
+    padding: 5px 10px 5px 8px; border-radius: 100px;
+    border: 1px solid var(--line); background: var(--surface);
+  }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+  .chip.live .dot { background: var(--signal); box-shadow: 0 0 6px var(--signal); animation: blink 1.6s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .chip.sol { color: var(--sol-a); }
+  .chip.rh { color: var(--rh); }
+
+  .search-row { display: flex; gap: 8px; }
+  .search-box {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 11px 14px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    transition: border-color .15s;
+  }
+  .search-box:focus { border-color: var(--sol-b); }
+  .search-box::placeholder { color: var(--text-faint); }
+
+  main { position: relative; z-index: 1; padding: 18px; max-width: 1100px; margin: 0 auto; }
+
+  .lookup-card {
+    border: 1px dashed var(--sol-b);
+    background: linear-gradient(180deg, rgba(153,69,255,0.08), transparent);
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 16px;
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .lookup-card b { color: var(--text); font-family: var(--disp); }
+  .lookup-links { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    animation: slidein .25s ease;
+    position: relative;
+    overflow: hidden;
+    transition: border-color .15s, transform .15s;
+  }
+  .card:hover { border-color: #313A50; transform: translateY(-2px); }
+  .card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  }
+  .card.sol::before { background: linear-gradient(90deg, var(--sol-a), var(--sol-b)); }
+  .card.rh::before { background: var(--rh); }
+  @keyframes slidein { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+  .sym { font-family: var(--disp); font-weight: 700; font-size: 16px; }
+  .chain-tag { font-size: 9.5px; letter-spacing: 0.05em; font-weight: 700; margin-top: 3px; }
+  .chain-tag.sol { color: var(--sol-a); }
+  .chain-tag.rh { color: var(--rh); }
+  .score { font-family: var(--disp); font-weight: 700; font-size: 24px; text-align: right; line-height: 1; }
+  .score-label { font-size: 9px; color: var(--text-faint); text-align: right; letter-spacing: 0.05em; margin-top: 2px; }
+  .good { color: var(--signal); } .warn { color: var(--amber); } .bad { color: var(--danger); }
+
+  .mcap-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 11px; color: var(--text-dim);
+    margin-bottom: 10px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mcap-row .mcap-val { font-family: var(--disp); font-weight: 700; font-size: 14px; color: var(--text); }
+  .mcap-row .price-val { font-family: var(--mono); color: var(--text-faint); }
+
+  .addr-row {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--text-dim);
+    background: var(--surface-2);
+    border-radius: 7px;
+    padding: 6px 8px;
+    margin-bottom: 10px;
+  }
+  .addr-row span.full { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .copy-btn {
+    background: none; border: none; color: var(--text-dim);
+    font-family: var(--mono); font-size: 10.5px; cursor: pointer;
+    padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .copy-btn:hover { color: var(--text); border-color: #3A4258; }
+  .copy-btn.copied { color: var(--signal); border-color: var(--signal); }
+
+  .flags { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-height: 18px; }
+  .flag { font-size: 11px; color: var(--danger); display: flex; gap: 5px; }
+  .flag.ok { color: var(--signal); }
+
+  .card-actions { display: flex; gap: 8px; }
+  .action-btn {
+    flex: 1;
+    text-align: center;
+    text-decoration: none;
+    font-family: var(--disp);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    color: var(--text);
+    transition: background .15s, border-color .15s;
+  }
+  .action-btn:hover { background: var(--surface-2); }
+  .action-btn.primary.sol { border-color: rgba(20,241,149,0.3); color: var(--sol-a); }
+  .action-btn.primary.sol:hover { background: rgba(20,241,149,0.08); }
+  .action-btn.primary.rh { border-color: rgba(0,200,5,0.35); color: var(--rh); }
+  .action-btn.primary.rh:hover { background: rgba(0,200,5,0.08); }
+
+  .meta-row { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); margin-top: 10px; }
+
+  .empty { padding: 70px 20px; text-align: center; color: var(--text-dim); font-size: 13px; }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface-2); border: 1px solid var(--signal); color: var(--signal);
+    padding: 10px 18px; border-radius: 100px; font-size: 12px;
+    opacity: 0; transition: opacity .2s, transform .2s;
+    z-index: 50; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-row">
+    <div class="brand">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M12 2L4 5.5V11C4 16.2 7.4 20.9 12 22C16.6 20.9 20 16.2 20 11V5.5L12 2Z" stroke="#00E5A0" stroke-width="1.6" fill="rgba(0,229,160,0.08)"/>
+        <path d="M8.5 12L11 14.5L16 9" stroke="#00E5A0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <h1>SENTRY — LIVE SCAN</h1>
+    </div>
+    <div class="chain-status">
+      <div class="chip sol" id="solChip"><span class="dot"></span>SOLANA</div>
+      <div class="chip rh" id="rhChip"><span class="dot"></span>ROBINHOOD</div>
+    </div>
+  </div>
+  <div class="search-row">
+    <input class="search-box" id="search" placeholder="Search by symbol, or paste a contract address / mint…" />
+  </div>
+</header>
+
+<main>
+  <div id="lookupResult"></div>
+  <div class="empty" id="emptyMsg">Waiting for the first token to launch…</div>
+  <div class="grid" id="cards"></div>
+</main>
+
+<div class="toast" id="toast">Copied</div>
+
+<script>
+  const cardsEl = document.getElementById('cards');
+  const emptyMsg = document.getElementById('emptyMsg');
+  const searchEl = document.getElementById('search');
+  const lookupResult = document.getElementById('lookupResult');
+  const solChip = document.getElementById('solChip');
+  const rhChip = document.getElementById('rhChip');
+  const toast = document.getElementById('toast');
+
+  const tokensById = new Map(); // id -> token data
+  const cardEls = new Map();    // id -> DOM node
+  let solUsd = null;
+
+  function scoreClass(s) { return s >= 70 ? 'good' : s >= 40 ? 'warn' : 'bad'; }
+  function short(addr) { return addr ? addr.slice(0, 5) + '…' + addr.slice(-5) : '—'; }
+
+  function formatUsd(n) {
+    if (n === null || n === undefined) return null;
+    if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(2) + 'M';
+    if (n >= 1_000) return '$' + (n / 1_000).toFixed(1) + 'K';
+    return '$' + n.toFixed(0);
+  }
+
+  function formatPrice(n) {
+    if (n === null || n === undefined) return null;
+    // token prices are often tiny fractions of a cent — show enough
+    // precision to be meaningful instead of rounding to $0.00
+    if (n < 0.01) return '$' + n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
+    return '$' + n.toFixed(4);
+  }
+
+  function formatAge(ms) {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    if (s < 60) return s + 's';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ' + (s % 60) + 's';
+    const h = Math.floor(m / 60);
+    return h + 'h ' + (m % 60) + 'm';
+  }
+
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 1400);
+  }
+
+  function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      showToast('Address copied');
+      if (btn) {
+        const original = btn.textContent;
+        btn.textContent = 'Copied ✓';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1200);
+      }
+    }).catch(() => showToast('Copy failed — select manually'));
+  }
+
+  function tradeLinks(token) {
+    if (token.chain === 'robinhood') {
+      return [
+        { label: 'View on Explorer ↗', url: `https://robinhoodchain.blockscout.com/address/${token.id}`, cls: 'primary rh' },
+      ];
+    }
+    // solana / pump.fun default
+    return [
+      { label: 'Trade on Pump.fun ↗', url: `https://pump.fun/coin/${token.id}`, cls: 'primary sol' },
+      { label: 'Solscan ↗', url: `https://solscan.io/token/${token.id}`, cls: '' },
+    ];
+  }
+
+  function renderCard(token) {
+    const chainCls = token.chain === 'robinhood' ? 'rh' : 'sol';
+    const chainLabel = token.chain === 'robinhood' ? 'ROBINHOOD CHAIN' : 'PUMP.FUN · SOLANA';
+    const links = tradeLinks(token);
+
+    const priceUsd = (token.priceSol !== null && solUsd) ? token.priceSol * solUsd : null;
+    const mcapDisplay = token.marketCapUsd !== null && token.marketCapUsd !== undefined
+      ? formatUsd(token.marketCapUsd)
+      : (token.marketCapSol !== null && token.marketCapSol !== undefined
+          ? token.marketCapSol.toFixed(2) + ' SOL'
+          : (token.chain === 'robinhood' ? 'pending' : '—'));
+    const priceDisplay = priceUsd !== null ? formatPrice(priceUsd)
+      : (token.priceSol !== null && token.priceSol !== undefined ? token.priceSol.toFixed(8) + ' SOL' : '—');
+
+    const div = document.createElement('div');
+    div.className = `card ${chainCls}`;
+    div.dataset.symbol = (token.symbol || '').toLowerCase();
+    div.dataset.id = token.id.toLowerCase();
+
+    div.innerHTML = `
+      <div class="card-top">
+        <div>
+          <div class="sym">${token.symbol || '???'}</div>
+          <div class="chain-tag ${chainCls}">${chainLabel}</div>
+        </div>
+        <div>
+          <div class="score ${scoreClass(token.score)}">${token.score}</div>
+          <div class="score-label">TRUST SCORE</div>
+        </div>
+      </div>
+      <div class="mcap-row">
+        <div><span class="mcap-val">${mcapDisplay}</span> mcap</div>
+        <div class="price-val">${priceDisplay}</div>
+      </div>
+      <div class="addr-row">
+        <span class="full">${token.id}</span>
+        <button class="copy-btn" data-addr="${token.id}">Copy</button>
+      </div>
+      <div class="flags">
+        ${(token.flags && token.flags.length)
+          ? token.flags.map(f => `<div class="flag">⚠ ${f}</div>`).join('')
+          : `<div class="flag ok">✓ No red flags detected yet</div>`}
+      </div>
+      <div class="card-actions">
+        ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join('')}
+      </div>
+      <div class="meta-row"><span class="age-val" data-created="${token.createdAt}">0s old</span><span>${token.creator ? short(token.creator) + ' creator' : ''}</span></div>
+    `;
+
+    div.querySelector('.copy-btn').addEventListener('click', (e) => {
+      e.preventDefault();
+      copyText(token.id, e.target);
+    });
+
+    return div;
+  }
+
+  function upsertToken(token) {
+    emptyMsg.style.display = 'none';
+    tokensById.set(token.id, token);
+    const existing = cardEls.get(token.id);
+    const fresh = renderCard(token);
+    if (existing) {
+      existing.replaceWith(fresh);
+    } else {
+      cardsEl.prepend(fresh);
+    }
+    cardEls.set(token.id, fresh);
+    applyFilter(); // re-apply current search so new cards respect an active filter
+    trimGrid();
+  }
+
+  function trimGrid() {
+    while (cardsEl.children.length > 60) {
+      const last = cardsEl.lastElementChild;
+      const id = last.dataset.id;
+      cardEls.delete(id);
+      tokensById.delete(id);
+      cardsEl.removeChild(last);
+    }
+  }
+
+  // ---- search / paste-to-find ----
+  function detectChainFromAddress(addr) {
+    if (/^0x[a-fA-F0-9]{40}$/.test(addr)) return 'robinhood';
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)) return 'solana';
+    return null;
+  }
+
+  function applyFilter() {
+    const q = searchEl.value.trim().toLowerCase();
+    lookupResult.innerHTML = '';
+
+    if (!q) {
+      [...cardsEl.children].forEach(c => c.style.display = '');
+      return;
+    }
+
+    let anyMatch = false;
+    [...cardsEl.children].forEach(c => {
+      const match = c.dataset.symbol.includes(q) || c.dataset.id.includes(q);
+      c.style.display = match ? '' : 'none';
+      if (match) anyMatch = true;
+    });
+
+    // If it looks like a full address/mint and nothing in the live feed matches,
+    // offer direct links even though Sentry hasn't scanned it itself.
+    if (!anyMatch && q.length >= 20) {
+      const chain = detectChainFromAddress(searchEl.value.trim());
+      if (chain) {
+        const raw = searchEl.value.trim();
+        const links = tradeLinks({ id: raw, chain });
+        lookupResult.innerHTML = `
+          <div class="lookup-card">
+            <b>Not seen in this session's live feed.</b> That can mean it launched before Sentry started watching, or hasn't shown any activity yet. Direct links below still work — Sentry just can't show you a score without having observed it live.
+            <div class="lookup-links">
+              ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener" style="flex:none;padding:9px 16px;">${l.label}</a>`).join('')}
+            </div>
+          </div>
+        `;
+      }
+    }
+  }
+
+  searchEl.addEventListener('input', applyFilter);
+
+  // ---- websocket ----
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/live`);
+
+    ws.onmessage = (msg) => {
+      const data = JSON.parse(msg.data);
+      if (data.type === 'snapshot') data.tokens.forEach(upsertToken);
+      if (data.type === 'token' || data.type === 'update') upsertToken(data.token);
+      if (data.type === 'feedStatus') {
+        const chip = data.chain === 'robinhood' ? rhChip : solChip;
+        chip.classList.toggle('live', data.status === 'connected');
+      }
+      if (data.type === 'solPrice') {
+        solUsd = data.usd;
+      }
+    };
+
+    ws.onclose = () => {
+      solChip.classList.remove('live');
+      rhChip.classList.remove('live');
+      setTimeout(connect, 2000);
+    };
+  }
+  connect();
+
+  // Age needs to tick on its own — it must not depend on a new trade
+  // event arriving, or quiet tokens would show a frozen "0s old" forever.
+  setInterval(() => {
+    document.querySelectorAll('.age-val').forEach(el => {
+      const created = Number(el.dataset.created);
+      if (created) el.textContent = formatAge(Date.now() - created) + ' old';
+    });
+  }, 1000);
+</script>
+</body>
+</html>
