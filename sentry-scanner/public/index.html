@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Sentry — Live Scan</title>
+<script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
 <style>
   :root {
     --bg: #07090E; --surface: #10141D; --surface-2: #171D29; --line: #232A3A;
@@ -17,7 +18,6 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); }
 
-  /* ---- background texture: subtle scanning grid ---- */
   body::before {
     content: '';
     position: fixed; inset: 0;
@@ -69,6 +69,19 @@
   .search-box:focus { border-color: var(--sol-b); }
   .search-box::placeholder { color: var(--text-faint); }
 
+  .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+  .tab {
+    flex-shrink: 0;
+    font-family: var(--disp); font-weight: 600; font-size: 12px;
+    padding: 7px 13px; border-radius: 100px;
+    border: 1px solid var(--line); background: var(--surface);
+    color: var(--text-dim); cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .tab:hover { color: var(--text); border-color: #3A4258; }
+  .tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+
   main { position: relative; z-index: 1; padding: 18px; max-width: 1100px; margin: 0 auto; }
 
   .lookup-card {
@@ -82,6 +95,9 @@
   }
   .lookup-card b { color: var(--text); font-family: var(--disp); }
   .lookup-links { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  .lookup-facts { margin-top: 10px; font-size: 11.5px; }
+  .lookup-facts div { padding: 3px 0; }
+  .lookup-facts b { font-family: var(--mono); }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
 
@@ -94,6 +110,7 @@
     position: relative;
     overflow: hidden;
     transition: border-color .15s, transform .15s;
+    cursor: pointer;
   }
   .card:hover { border-color: #313A50; transform: translateY(-2px); }
   .card::before {
@@ -121,6 +138,7 @@
   }
   .mcap-row .mcap-val { font-family: var(--disp); font-weight: 700; font-size: 14px; color: var(--text); }
   .mcap-row .price-val { font-family: var(--mono); color: var(--text-faint); }
+  .mcap-tag { font-size: 8.5px; color: var(--text-faint); margin-left: 4px; }
 
   .addr-row {
     display: flex; align-items: center; gap: 6px;
@@ -176,6 +194,107 @@
     z-index: 50; pointer-events: none;
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---- detail modal ---- */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 40;
+    background: rgba(4,5,9,0.7);
+    backdrop-filter: blur(4px);
+    display: none;
+    align-items: flex-start; justify-content: center;
+    overflow-y: auto;
+    padding: 40px 16px;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    max-width: 520px; width: 100%;
+    padding: 24px;
+    position: relative;
+    animation: modalin .2s ease;
+  }
+  @keyframes modalin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  .modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: var(--surface-2); border: 1px solid var(--line);
+    color: var(--text-dim); width: 28px; height: 28px; border-radius: 8px;
+    cursor: pointer; font-size: 14px;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal h2 { font-family: var(--disp); font-size: 20px; margin: 0 0 2px; }
+  .modal .modal-chain { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 18px; }
+  .modal-section { margin-bottom: 18px; }
+  .modal-section h3 {
+    font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-faint); margin: 0 0 8px; font-weight: 600;
+  }
+  .modal-flag-list { display: flex; flex-direction: column; gap: 8px; }
+  .modal-flag {
+    font-size: 12.5px; padding: 10px 12px; border-radius: 8px;
+    background: rgba(255,67,104,0.08); border: 1px solid rgba(255,67,104,0.25);
+    color: var(--text);
+  }
+  .modal-flag.ok { background: rgba(0,229,160,0.08); border-color: rgba(0,229,160,0.25); }
+  .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .modal-stat { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
+  .modal-stat .label { font-size: 9.5px; color: var(--text-faint); letter-spacing: 0.04em; margin-bottom: 4px; }
+  .modal-stat .val { font-family: var(--disp); font-weight: 700; font-size: 14px; }
+  .modal-addr {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface-2); border-radius: 8px; padding: 10px 12px;
+    font-size: 11.5px; word-break: break-all;
+  }
+
+  /* ---- trade panel ---- */
+  .trade-panel {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+    background: var(--surface-2);
+  }
+  .trade-warning {
+    font-size: 10.5px; color: var(--amber);
+    background: rgba(255,184,77,0.08); border: 1px solid rgba(255,184,77,0.25);
+    border-radius: 7px; padding: 8px 10px; margin-bottom: 12px; line-height: 1.5;
+  }
+  .connect-btn {
+    width: 100%; padding: 10px; border-radius: 8px;
+    background: var(--sol-a); color: #04140D; border: none;
+    font-family: var(--disp); font-weight: 700; font-size: 13px; cursor: pointer;
+  }
+  .connect-btn:hover { opacity: 0.9; }
+  .wallet-pill {
+    font-size: 11px; color: var(--sol-a); font-family: var(--mono);
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .side-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
+  .side-btn {
+    flex: 1; padding: 8px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--text-dim);
+    font-family: var(--disp); font-weight: 700; font-size: 12px; cursor: pointer;
+  }
+  .side-btn.active.buy { background: rgba(0,229,160,0.12); border-color: var(--signal); color: var(--signal); }
+  .side-btn.active.sell { background: rgba(255,67,104,0.12); border-color: var(--danger); color: var(--danger); }
+  .amount-input {
+    width: 100%; padding: 10px; border-radius: 7px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 14px;
+    margin-bottom: 10px; outline: none;
+  }
+  .amount-input:focus { border-color: var(--sol-b); }
+  .execute-btn {
+    width: 100%; padding: 11px; border-radius: 8px; border: none;
+    font-family: var(--disp); font-weight: 700; font-size: 13px; cursor: pointer;
+  }
+  .execute-btn.buy { background: var(--signal); color: #04140D; }
+  .execute-btn.sell { background: var(--danger); color: #1A0509; }
+  .execute-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .trade-status { font-size: 11.5px; margin-top: 10px; padding: 8px 10px; border-radius: 7px; }
+  .trade-status.pending { background: rgba(153,69,255,0.1); color: #C9A8FF; }
+  .trade-status.success { background: rgba(0,229,160,0.1); color: var(--signal); }
+  .trade-status.error { background: rgba(255,67,104,0.1); color: var(--danger); }
 </style>
 </head>
 <body>
@@ -197,6 +316,13 @@
   <div class="search-row">
     <input class="search-box" id="search" placeholder="Search by symbol, or paste a contract address / mint…" />
   </div>
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-filter="all">All</div>
+    <div class="tab" data-filter="solana">Pump.fun · Solana</div>
+    <div class="tab" data-filter="robinhood">Robinhood Chain</div>
+    <div class="tab" data-filter="flagged">Flagged only</div>
+    <div class="tab" data-filter="clean">Clean only</div>
+  </div>
 </header>
 
 <main>
@@ -207,6 +333,10 @@
 
 <div class="toast" id="toast">Copied</div>
 
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" id="modalContent"></div>
+</div>
+
 <script>
   const cardsEl = document.getElementById('cards');
   const emptyMsg = document.getElementById('emptyMsg');
@@ -215,10 +345,14 @@
   const solChip = document.getElementById('solChip');
   const rhChip = document.getElementById('rhChip');
   const toast = document.getElementById('toast');
+  const tabsEl = document.getElementById('tabs');
+  const modalBackdrop = document.getElementById('modalBackdrop');
+  const modalContent = document.getElementById('modalContent');
 
   const tokensById = new Map(); // id -> token data
   const cardEls = new Map();    // id -> DOM node
   let solUsd = null;
+  let activeFilter = 'all';
 
   function scoreClass(s) { return s >= 70 ? 'good' : s >= 40 ? 'warn' : 'bad'; }
   function short(addr) { return addr ? addr.slice(0, 5) + '…' + addr.slice(-5) : '—'; }
@@ -232,8 +366,6 @@
 
   function formatPrice(n) {
     if (n === null || n === undefined) return null;
-    // token prices are often tiny fractions of a cent — show enough
-    // precision to be meaningful instead of rounding to $0.00
     if (n < 0.01) return '$' + n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
     return '$' + n.toFixed(4);
   }
@@ -271,18 +403,13 @@
         { label: 'View on Explorer ↗', url: `https://robinhoodchain.blockscout.com/address/${token.id}`, cls: 'primary rh' },
       ];
     }
-    // solana / pump.fun default
     return [
       { label: 'Trade on Pump.fun ↗', url: `https://pump.fun/coin/${token.id}`, cls: 'primary sol' },
       { label: 'Solscan ↗', url: `https://solscan.io/token/${token.id}`, cls: '' },
     ];
   }
 
-  function renderCard(token) {
-    const chainCls = token.chain === 'robinhood' ? 'rh' : 'sol';
-    const chainLabel = token.chain === 'robinhood' ? 'ROBINHOOD CHAIN' : 'PUMP.FUN · SOLANA';
-    const links = tradeLinks(token);
-
+  function mcapPieces(token) {
     const priceUsd = (token.priceSol !== null && solUsd) ? token.priceSol * solUsd : null;
     const mcapDisplay = token.marketCapUsd !== null && token.marketCapUsd !== undefined
       ? formatUsd(token.marketCapUsd)
@@ -291,11 +418,22 @@
           : (token.chain === 'robinhood' ? 'pending' : '—'));
     const priceDisplay = priceUsd !== null ? formatPrice(priceUsd)
       : (token.priceSol !== null && token.priceSol !== undefined ? token.priceSol.toFixed(8) + ' SOL' : '—');
+    const initialOnly = token.marketCapIsInitialOnly === true;
+    return { mcapDisplay, priceDisplay, initialOnly };
+  }
+
+  function renderCard(token) {
+    const chainCls = token.chain === 'robinhood' ? 'rh' : 'sol';
+    const chainLabel = token.chain === 'robinhood' ? 'ROBINHOOD CHAIN' : 'PUMP.FUN · SOLANA';
+    const links = tradeLinks(token);
+    const { mcapDisplay, priceDisplay, initialOnly } = mcapPieces(token);
 
     const div = document.createElement('div');
     div.className = `card ${chainCls}`;
     div.dataset.symbol = (token.symbol || '').toLowerCase();
     div.dataset.id = token.id.toLowerCase();
+    div.dataset.chain = token.chain;
+    div.dataset.flagged = (token.flags && token.flags.length) ? '1' : '0';
 
     div.innerHTML = `
       <div class="card-top">
@@ -309,7 +447,7 @@
         </div>
       </div>
       <div class="mcap-row">
-        <div><span class="mcap-val">${mcapDisplay}</span> mcap</div>
+        <div><span class="mcap-val">${mcapDisplay}</span> mcap${initialOnly ? '<span class="mcap-tag">at launch</span>' : ''}</div>
         <div class="price-val">${priceDisplay}</div>
       </div>
       <div class="addr-row">
@@ -318,7 +456,7 @@
       </div>
       <div class="flags">
         ${(token.flags && token.flags.length)
-          ? token.flags.map(f => `<div class="flag">⚠ ${f}</div>`).join('')
+          ? token.flags.slice(0, 2).map(f => `<div class="flag">⚠ ${f}</div>`).join('') + (token.flags.length > 2 ? `<div class="flag">+${token.flags.length - 2} more — tap card</div>` : '')
           : `<div class="flag ok">✓ No red flags detected yet</div>`}
       </div>
       <div class="card-actions">
@@ -329,10 +467,204 @@
 
     div.querySelector('.copy-btn').addEventListener('click', (e) => {
       e.preventDefault();
+      e.stopPropagation();
       copyText(token.id, e.target);
     });
 
+    div.querySelectorAll('.action-btn').forEach(a => a.addEventListener('click', (e) => e.stopPropagation()));
+
+    div.addEventListener('click', () => openModal(token));
+
     return div;
+  }
+
+  // ---- detail modal ----
+  function openModal(token) {
+    const chainCls = token.chain === 'robinhood' ? 'rh' : 'sol';
+    const chainLabel = token.chain === 'robinhood' ? 'ROBINHOOD CHAIN' : 'PUMP.FUN · SOLANA';
+    const { mcapDisplay, priceDisplay, initialOnly } = mcapPieces(token);
+    const links = tradeLinks(token);
+    const createdDate = new Date(token.createdAt);
+
+    modalContent.innerHTML = `
+      <button class="modal-close" id="modalCloseBtn">✕</button>
+      <h2>${token.symbol || '???'} ${token.name ? '— ' + token.name : ''}</h2>
+      <div class="modal-chain chain-tag ${chainCls}">${chainLabel}</div>
+
+      <div class="modal-section">
+        <h3>Trust score: ${token.score} / 100</h3>
+        <div class="modal-flag-list">
+          ${(token.flags && token.flags.length)
+            ? token.flags.map(f => `<div class="modal-flag">⚠ ${f}</div>`).join('')
+            : `<div class="modal-flag ok">✓ Sentry hasn't detected any red flags for this token yet. That's not a guarantee it's safe — it means nothing suspicious has shown up in what Sentry can currently observe.</div>`}
+        </div>
+      </div>
+
+      <div class="modal-section">
+        <h3>Market data</h3>
+        <div class="modal-grid">
+          <div class="modal-stat"><div class="label">MARKET CAP${initialOnly ? ' (AT LAUNCH)' : ''}</div><div class="val">${mcapDisplay}</div></div>
+          <div class="modal-stat"><div class="label">PRICE</div><div class="val">${priceDisplay}</div></div>
+        </div>
+        ${initialOnly ? `<div style="font-size:11px;color:var(--text-faint);margin-top:8px;">This is the starting market cap from launch. Live updates after that require Sentry's operator to enable a paid trade-data subscription — ask if that's been turned on yet.</div>` : ''}
+      </div>
+
+      <div class="modal-section">
+        <h3>Details</h3>
+        <div class="modal-grid" style="margin-bottom:10px;">
+          <div class="modal-stat"><div class="label">LAUNCHED</div><div class="val" style="font-size:11px;">${createdDate.toLocaleTimeString()}</div></div>
+          <div class="modal-stat"><div class="label">CREATOR</div><div class="val" style="font-size:11px;">${short(token.creator)}</div></div>
+        </div>
+        <div class="modal-addr">
+          <span style="flex:1;">${token.id}</span>
+          <button class="copy-btn" id="modalCopyBtn">Copy</button>
+        </div>
+      </div>
+
+      <div class="card-actions">
+        ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join('')}
+      </div>
+
+      ${token.chain === 'solana' ? `
+        <div class="modal-section">
+          <h3>Trade (beta)</h3>
+          <div class="trade-panel" id="tradePanel">
+            <div class="trade-warning">⚠ Beta. Test with a small amount first. This has not been end-to-end tested against mainnet from this environment. Sentry never sees your private key — your wallet signs every transaction.</div>
+            <div id="walletArea"></div>
+          </div>
+        </div>
+      ` : `
+        <div class="modal-section">
+          <h3>Trade</h3>
+          <div class="trade-panel">
+            <div style="font-size:11.5px;color:var(--text-dim);">In-app trading for Robinhood Chain isn't wired up yet — use the explorer link above for now.</div>
+          </div>
+        </div>
+      `}
+    `;
+
+    modalContent.querySelector('#modalCloseBtn').addEventListener('click', closeModal);
+    modalContent.querySelector('#modalCopyBtn').addEventListener('click', (e) => copyText(token.id, e.target));
+    if (token.chain === 'solana') renderWalletArea(token);
+    modalBackdrop.classList.add('show');
+  }
+
+  function closeModal() {
+    modalBackdrop.classList.remove('show');
+  }
+  modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+  // ---- wallet connect + trade (Solana / Pump.fun only — non-custodial) ----
+  // Sentry never touches a private key. Phantom (window.solana) signs
+  // every transaction locally in the extension; this page only ever
+  // sees the resulting signed bytes it hands back.
+  let walletPubkey = null;
+  let tradeSide = 'buy';
+
+  function base64ToBytes(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  }
+
+  async function connectPhantom() {
+    if (!window.solana || !window.solana.isPhantom) {
+      showToast('Phantom wallet not detected — install the extension first');
+      return null;
+    }
+    try {
+      const resp = await window.solana.connect();
+      walletPubkey = resp.publicKey.toString();
+      return walletPubkey;
+    } catch {
+      showToast('Wallet connection cancelled');
+      return null;
+    }
+  }
+
+  function renderWalletArea(token) {
+    const area = document.getElementById('walletArea');
+    if (!area) return;
+
+    if (!walletPubkey) {
+      area.innerHTML = `<button class="connect-btn" id="connectBtn">Connect Phantom Wallet</button>`;
+      area.querySelector('#connectBtn').addEventListener('click', async () => {
+        const pk = await connectPhantom();
+        if (pk) renderWalletArea(token);
+      });
+      return;
+    }
+
+    area.innerHTML = `
+      <div class="wallet-pill"><span>${short(walletPubkey)}</span><span style="color:var(--text-faint);">connected</span></div>
+      <div class="side-toggle">
+        <button class="side-btn buy ${tradeSide === 'buy' ? 'active buy' : ''}" id="buyToggle">Buy</button>
+        <button class="side-btn sell ${tradeSide === 'sell' ? 'active sell' : ''}" id="sellToggle">Sell</button>
+      </div>
+      <input class="amount-input" id="tradeAmount" type="number" step="any" min="0"
+        placeholder="${tradeSide === 'buy' ? 'Amount in SOL' : 'Amount of tokens'}" />
+      <button class="execute-btn ${tradeSide}" id="executeBtn">${tradeSide === 'buy' ? 'Buy' : 'Sell'} ${token.symbol || ''}</button>
+      <div id="tradeStatusArea"></div>
+    `;
+
+    area.querySelector('#buyToggle').addEventListener('click', () => { tradeSide = 'buy'; renderWalletArea(token); });
+    area.querySelector('#sellToggle').addEventListener('click', () => { tradeSide = 'sell'; renderWalletArea(token); });
+    area.querySelector('#executeBtn').addEventListener('click', () => executeTrade(token));
+  }
+
+  function setTradeStatus(msg, kind) {
+    const el = document.getElementById('tradeStatusArea');
+    if (!el) return;
+    el.innerHTML = `<div class="trade-status ${kind}">${msg}</div>`;
+  }
+
+  async function executeTrade(token) {
+    const amountInput = document.getElementById('tradeAmount');
+    const amount = parseFloat(amountInput.value);
+    if (!amount || amount <= 0) {
+      setTradeStatus('Enter a valid amount first.', 'error');
+      return;
+    }
+
+    const executeBtn = document.getElementById('executeBtn');
+    executeBtn.disabled = true;
+    setTradeStatus('Building transaction…', 'pending');
+
+    try {
+      const buildRes = await fetch('/api/trade/solana-build', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: walletPubkey,
+          action: tradeSide,
+          mint: token.id,
+          amount,
+          denominatedInSol: tradeSide === 'buy',
+          slippage: 10,
+        }),
+      });
+      const buildData = await buildRes.json();
+      if (!buildRes.ok || !buildData.transaction) {
+        throw new Error(buildData.error || 'Failed to build transaction');
+      }
+
+      setTradeStatus('Confirm the transaction in Phantom…', 'pending');
+      const txBytes = base64ToBytes(buildData.transaction);
+      const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
+
+      const { signature } = await window.solana.signAndSendTransaction(tx);
+
+      setTradeStatus(
+        `Sent. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">View on Solscan ↗</a>`,
+        'success'
+      );
+    } catch (err) {
+      setTradeStatus('Failed: ' + (err.message || 'unknown error'), 'error');
+    } finally {
+      executeBtn.disabled = false;
+    }
   }
 
   function upsertToken(token) {
@@ -346,17 +678,37 @@
       cardsEl.prepend(fresh);
     }
     cardEls.set(token.id, fresh);
-    applyFilter(); // re-apply current search so new cards respect an active filter
+    applyFilter();
     trimGrid();
   }
 
   function trimGrid() {
-    while (cardsEl.children.length > 60) {
+    while (cardsEl.children.length > 150) {
       const last = cardsEl.lastElementChild;
       const id = last.dataset.id;
       cardEls.delete(id);
       tokensById.delete(id);
       cardsEl.removeChild(last);
+    }
+  }
+
+  // ---- category tabs ----
+  tabsEl.addEventListener('click', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    tabsEl.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activeFilter = tab.dataset.filter;
+    applyFilter();
+  });
+
+  function passesTab(card) {
+    switch (activeFilter) {
+      case 'solana': return card.dataset.chain === 'solana';
+      case 'robinhood': return card.dataset.chain === 'robinhood';
+      case 'flagged': return card.dataset.flagged === '1';
+      case 'clean': return card.dataset.flagged === '0';
+      default: return true;
     }
   }
 
@@ -367,38 +719,75 @@
     return null;
   }
 
+  let lookupDebounce = null;
+
   function applyFilter() {
     const q = searchEl.value.trim().toLowerCase();
     lookupResult.innerHTML = '';
 
-    if (!q) {
-      [...cardsEl.children].forEach(c => c.style.display = '');
-      return;
-    }
-
     let anyMatch = false;
     [...cardsEl.children].forEach(c => {
-      const match = c.dataset.symbol.includes(q) || c.dataset.id.includes(q);
-      c.style.display = match ? '' : 'none';
-      if (match) anyMatch = true;
+      const searchOk = !q || c.dataset.symbol.includes(q) || c.dataset.id.includes(q);
+      const tabOk = passesTab(c);
+      const visible = searchOk && tabOk;
+      c.style.display = visible ? '' : 'none';
+      if (searchOk) anyMatch = true;
     });
 
-    // If it looks like a full address/mint and nothing in the live feed matches,
-    // offer direct links even though Sentry hasn't scanned it itself.
     if (!anyMatch && q.length >= 20) {
-      const chain = detectChainFromAddress(searchEl.value.trim());
-      if (chain) {
-        const raw = searchEl.value.trim();
-        const links = tradeLinks({ id: raw, chain });
+      clearTimeout(lookupDebounce);
+      lookupDebounce = setTimeout(() => runServerLookup(searchEl.value.trim()), 400);
+    }
+  }
+
+  async function runServerLookup(raw) {
+    const chain = detectChainFromAddress(raw);
+    if (!chain) return;
+
+    lookupResult.innerHTML = `<div class="lookup-card">Checking the chain directly for this address…</div>`;
+
+    try {
+      const res = await fetch('/api/lookup?address=' + encodeURIComponent(raw));
+      const data = await res.json();
+
+      if (data.found && data.source === 'live-history') {
+        // Sentry actually scanned this one live — show it like a normal result.
+        lookupResult.innerHTML = '';
+        upsertToken(data.token);
+        applyFilter();
+        return;
+      }
+
+      if (data.found && data.source === 'on-chain-direct') {
+        const links = tradeLinks({ id: raw, chain: data.chain });
+        let facts = '';
+        if (data.chain === 'solana') {
+          facts = `
+            <div class="lookup-facts">
+              <div><b>Supply:</b> ${data.supply ?? '—'}</div>
+              <div><b>Decimals:</b> ${data.decimals ?? '—'}</div>
+              <div><b>Mint authority:</b> ${data.mintAuthority ? short(data.mintAuthority) : 'renounced / none'}</div>
+            </div>`;
+        } else if (data.name || data.symbol) {
+          facts = `<div class="lookup-facts"><div><b>${data.symbol || '?'}</b> — ${data.name || 'unknown name'}</div></div>`;
+        }
         lookupResult.innerHTML = `
           <div class="lookup-card">
-            <b>Not seen in this session's live feed.</b> That can mean it launched before Sentry started watching, or hasn't shown any activity yet. Direct links below still work — Sentry just can't show you a score without having observed it live.
+            <b>Confirmed on-chain, but not seen in Sentry's live feed.</b> This means it launched before Sentry started watching (or on a launchpad Sentry doesn't track yet), so there's no score or flag history — but here's what's verifiable directly from the chain right now.
+            ${facts}
             <div class="lookup-links">
               ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener" style="flex:none;padding:9px 16px;">${l.label}</a>`).join('')}
             </div>
-          </div>
-        `;
+          </div>`;
+        return;
       }
+
+      lookupResult.innerHTML = `
+        <div class="lookup-card">
+          <b>Nothing found.</b> ${data.reason || "That address doesn't resolve to a token Sentry can verify."}
+        </div>`;
+    } catch (err) {
+      lookupResult.innerHTML = `<div class="lookup-card"><b>Lookup failed.</b> Could not reach the server — try again in a moment.</div>`;
     }
   }
 
@@ -430,8 +819,6 @@
   }
   connect();
 
-  // Age needs to tick on its own — it must not depend on a new trade
-  // event arriving, or quiet tokens would show a frozen "0s old" forever.
   setInterval(() => {
     document.querySelectorAll('.age-val').forEach(el => {
       const created = Number(el.dataset.created);

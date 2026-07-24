@@ -11,11 +11,10 @@
 
 const RUG_HISTORY_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
 const BUNDLE_WINDOW_MS = 15 * 1000; // first 15s after launch = highest bundle risk
+const MAX_TRACKED_TOKENS = 2000; // memory cap — without this the token Map grows forever
 
 // Pump.fun tokens are minted with a fixed total supply of 1 billion at
 // creation (standard across the platform, both pre- and post-migration).
-// This lets us compute a real market cap from just the last trade price,
-// without needing a paid indexer to read on-chain supply.
 const PUMPFUN_TOTAL_SUPPLY = 1_000_000_000;
 
 export class RiskEngine {
@@ -32,9 +31,19 @@ export class RiskEngine {
     this.solUsd = price;
   }
 
+  _evictOldestIfNeeded() {
+    // Map preserves insertion order, so the first key is the oldest —
+    // cheap way to cap memory without a separate priority queue.
+    while (this.tokens.size > MAX_TRACKED_TOKENS) {
+      const oldestKey = this.tokens.keys().next().value;
+      this.tokens.delete(oldestKey);
+    }
+  }
+
   onTokenCreated(evt) {
     // evt.mint (Solana) or evt.address (EVM chains) — normalize to `id`.
     const id = evt.mint || evt.address;
+    const marketCapSol = typeof evt.marketCapSol === 'number' ? evt.marketCapSol : null;
     const record = {
       id,
       chain: evt.chain || 'solana',
@@ -45,11 +54,13 @@ export class RiskEngine {
       trades: [],
       score: 100,
       flags: [],
-      priceSol: null,
-      marketCapSol: null,
-      marketCapUsd: null,
+      priceSol: marketCapSol !== null ? marketCapSol / PUMPFUN_TOTAL_SUPPLY : null,
+      marketCapSol,
+      marketCapUsd: marketCapSol !== null && this.solUsd ? marketCapSol * this.solUsd : null,
+      marketCapIsInitialOnly: marketCapSol !== null, // true until a real trade updates it
     };
     this.tokens.set(id, record);
+    this._evictOldestIfNeeded();
 
     // --- TIER 1: serial creator check ---
     const history = this.creatorHistory.get(evt.creator) || [];
@@ -76,15 +87,22 @@ export class RiskEngine {
     const ageMs = evt.timestamp - record.createdAt;
 
     // --- Price / market cap ---
-    // Pump.fun trade events carry solAmount (SOL paid/received) and
-    // tokenAmount (tokens bought/sold) for that single trade — price is
-    // just their ratio. Only meaningful for Solana/Pump.fun right now;
-    // Robinhood Chain doesn't have trade-level data wired in yet (that
-    // needs Uniswap swap-event parsing, a separate piece of work).
-    if (record.chain === 'solana' && evt.solAmount > 0 && evt.tokenAmount > 0) {
-      record.priceSol = evt.solAmount / evt.tokenAmount;
-      record.marketCapSol = record.priceSol * PUMPFUN_TOTAL_SUPPLY;
-      record.marketCapUsd = this.solUsd ? record.marketCapSol * this.solUsd : null;
+    // Real trade data (only arrives if a paid PumpPortal key is set —
+    // see pumpFeed.js). When it does arrive, it's authoritative and
+    // replaces the initial creation-time estimate.
+    if (record.chain === 'solana') {
+      if (typeof evt.marketCapSol === 'number') {
+        record.marketCapSol = evt.marketCapSol;
+        record.priceSol = evt.marketCapSol / PUMPFUN_TOTAL_SUPPLY;
+        record.marketCapIsInitialOnly = false;
+      } else if (evt.solAmount > 0 && evt.tokenAmount > 0) {
+        record.priceSol = evt.solAmount / evt.tokenAmount;
+        record.marketCapSol = record.priceSol * PUMPFUN_TOTAL_SUPPLY;
+        record.marketCapIsInitialOnly = false;
+      }
+      record.marketCapUsd = record.marketCapSol !== null && this.solUsd
+        ? record.marketCapSol * this.solUsd
+        : null;
     }
 
     // --- TIER 1: bundle/sniper clustering ---
@@ -133,6 +151,18 @@ export class RiskEngine {
 
   getToken(mint) {
     return this.tokens.get(mint);
+  }
+
+  // Case-insensitive — Solana addresses are case-sensitive base58, but
+  // EVM addresses are commonly pasted in mixed case, so normalize.
+  findByAddress(address) {
+    const direct = this.tokens.get(address);
+    if (direct) return direct;
+    const lower = address.toLowerCase();
+    for (const token of this.tokens.values()) {
+      if (token.id.toLowerCase() === lower) return token;
+    }
+    return null;
   }
 
   getRecent(limit = 50) {

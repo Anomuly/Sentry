@@ -111,4 +111,11 @@ export class RobinhoodFeed extends EventEmitter {
       return null; // not ERC-20-shaped, or reverted — skip silently
     }
   }
+
+  // Public entry point for on-demand lookups (used by /api/lookup for
+  // addresses the live feed hasn't seen this session).
+  async probeAddress(address) {
+    const info = await this._probeErc20(address);
+    return info; // null if not an ERC-20-shaped contract
+  }
 }

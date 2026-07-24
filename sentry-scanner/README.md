@@ -1,46 +1,74 @@
-# Sentry Scanner — v0.2
+# Sentry Scanner — v0.3
 
-Real-time meme coin scam/bundle detector. Watches new token launches
-on **Pump.fun (Solana)** and **Robinhood Chain** and scores them live
-as activity comes in.
+Real-time meme coin scam/bundle detector for **Pump.fun (Solana)** and
+**Robinhood Chain**, with market cap, address lookup, and a full detail
+view per token.
 
 ## What actually works right now (no API key needed)
 
-- Live connection to Pump.fun's free public feed — new token creations
-  and trades, streamed within ~1 second of block confirmation.
-- Live connection to Robinhood Chain's public RPC — watches every new
-  contract deployment, checks if it's an ERC-20, and watches the
-  Uniswap V3 factory for pool creation (the moment a token actually
-  becomes tradeable — the Robinhood Chain equivalent of a Pump.fun
-  "graduation").
-- **Serial-launcher detection**: flags creator wallets that have
-  launched multiple tokens in the last 24h (classic rug-farm pattern) —
-  works on both chains.
-- **Sniper/bundle proxy detection** (Pump.fun): flags tokens with an
-  unusually high number of distinct buys in the first 15 seconds after
-  launch.
-- **Dump detection** (Pump.fun): flags wallets that buy and then sell
-  most of their position within 30 seconds.
-- One live dashboard at `http://localhost:8080` showing every scanned
-  token from both chains, each tagged with its source, a running trust
-  score (0–100), and the specific flags that dropped it.
+- Live connection to Pump.fun via PumpPortal's free feed — new token
+  creations streamed in real time, including name, symbol, mint,
+  creator wallet, and **starting market cap** (Pump.fun computes and
+  includes this at creation, so it's free — no paid subscription
+  needed for this specific number).
+- Live connection to Robinhood Chain's public RPC — watches new
+  contract deployments and Uniswap V3 pool creation.
+- **Serial-launcher detection** on both chains — flags creator wallets
+  that have launched multiple tokens in 24h.
+- Dashboard with category tabs (All / Pump.fun / Robinhood Chain /
+  Flagged only / Clean only), a working search bar, copy-to-clipboard
+  addresses, direct trade/explorer links per token, and a click-through
+  detail view showing the full reasoning behind a score.
+- **Address lookup that isn't limited to the live session** — paste
+  any Solana mint or Robinhood Chain contract address. If Sentry saw
+  it launch live, you get the full score/flags. If not, it falls back
+  to a direct read of the chain itself (via public RPC, no key needed)
+  to at least confirm the token exists and show its raw supply/decimals.
 
-## What's stubbed and needs a paid data provider
+## Important limitation: live market cap updates cost money
 
-- `src/riskEngine.js` has a `fetchFundingGraph()` stub — wallet-funding
-  graph tracing and real holder-concentration checks need Helius,
-  Bitquery, or Shyft for Solana.
-- `src/robinhoodFeed.js` uses Robinhood Chain's free public RPC, which
-  is explicitly rate-limited and "not recommended for production use"
-  per Robinhood's own docs. Swap in an Alchemy or Chainstack endpoint
-  before relying on this daily. Also worth double-checking: the
-  Uniswap V3 factory address is assumed to match its address on other
-  EVM chains — confirm that's actually where it's deployed on
-  Robinhood Chain before trusting pool-creation events from it.
-- Robinhood Chain launchpads (Memecoin.Fun is currently the active
-  one) aren't specifically tracked yet — right now the feed catches
-  *any* new ERC-20 + pool, launchpad or not. Add launchpad-specific
-  contract watching once you've confirmed their factory addresses.
+This is worth understanding clearly, because it shapes what "market
+cap" means on the dashboard right now:
+
+- The **starting** market cap (what you see the moment a token
+  launches) is free and accurate — Pump.fun includes it directly in
+  the creation event.
+- **Updating** that number as the token actually trades — and the
+  bundle-sniping / buy-and-dump flags, which depend on watching trades
+  after launch — requires PumpPortal's metered trade subscription,
+  which needs an API key tied to a wallet funded with at least 0.02
+  SOL. It is not free past that point.
+- Right now, cards show a small "at launch" tag next to market cap to
+  be upfront that the number is a snapshot, not live.
+- To turn on live updates: get a PumpPortal API key, fund the linked
+  wallet, and set the `PUMPPORTAL_API_KEY` environment variable on
+  Railway. `src/pumpFeed.js` already has the logic to use it the
+  moment it's set — nothing else needs to change.
+
+## On "every meme coin ever created"
+
+Worth being straightforward about scope: Sentry watches Pump.fun and
+Robinhood Chain going **forward from when the server is running** — it
+has no way to retroactively know about tokens launched before it
+started, on either chain, without a paid historical indexer (Bitquery,
+Helius, Shyft). The `/api/lookup` on-chain fallback helps for
+individual addresses someone pastes in, but it can't back-fill the
+whole history of either chain into the dashboard.
+
+Also, Pump.fun is Solana's dominant meme launchpad but not the only
+one (Believe, Boop, Raydium LaunchLab, and others also exist). Adding
+a chain-wide watch of every SPL token mint (not just Pump.fun's) is
+technically possible but would require heavy filtering to separate
+meme coins from the much larger volume of non-meme token activity on
+Solana — a meaningfully bigger project than adding one more launchpad,
+and worth scoping separately if it's wanted.
+
+## What's still stubbed (Tier 2 — needs a paid indexer)
+
+`src/riskEngine.js` has a `fetchFundingGraph()` stub for the deepest
+signal: whether early buyer wallets share a common funding source,
+which is the real fingerprint of a bundled launch (as opposed to the
+buy-count proxy currently used). Needs Helius, Bitquery, or Shyft.
 
 ## Running it
 
@@ -49,37 +77,42 @@ npm install
 npm start
 ```
 
-Then open http://localhost:8080.
-
-## Where to actually run this — and why Netlify won't work for the backend
-
-**Netlify can't run this.** Netlify hosts static sites and short-lived
-serverless functions — this server needs to hold an open, persistent
-connection to two blockchains 24/7, which serverless functions aren't
-built for (they spin up, run briefly, and shut down). If you deploy
-this to Netlify as-is, the feeds will never stay connected.
-
-What actually works:
-- **Railway or Render** — easiest option, free/cheap tier, deploys a
-  Node app straight from a GitHub repo, keeps it running continuously.
-  Good starting point.
-- **Fly.io** — similar, a bit more control, still simple.
-- **A small VPS** (DigitalOcean, Linode, Hetzner) — more setup, but
-  full control and cheap ($4-6/mo range).
-
-Netlify *does* still have a role: once this has a real backend running
-somewhere, you could host the dashboard's static frontend on Netlify
-and have it talk to your backend's API/WebSocket over the network. But
-the scanning engine itself needs an always-on server, not Netlify.
+Then open http://localhost:8080. Set `PUMPPORTAL_API_KEY` as an
+environment variable to enable live trade data (optional, costs SOL —
+see above).
 
 ## Known gaps before this is trustworthy enough to ship
 
-- Single feed per chain = single point of failure. Add a second data
-  source per chain before relying on this for real money decisions.
-- No persistence yet — restart the server and history resets. Add a
-  database (Postgres/Timescale fits time-series token data well).
+- Single feed per chain = single point of failure.
+- In-memory only — a server restart clears all history. A database
+  (Postgres/Timescale) is the natural next step if this needs to
+  survive restarts or be queryable further back than the current
+  session.
 - No liquidity-lock check on either chain yet.
-- This scores tokens; it does not yet execute anything. Auto-exit is a
+- This scores tokens; it does not execute anything. Auto-exit is a
   separate, much bigger piece of work involving delegated wallet
-  permissions — prove out scoring accuracy first before touching
-  custody-adjacent code.
+  permissions — prove out scoring accuracy first.
+
+
+## Real trade execution (beta) — Solana / Pump.fun only
+
+Every token's detail modal now has a Buy/Sell panel for Solana tokens.
+**Security model: Sentry never touches a private key.** You connect
+your own Phantom wallet; the server only builds an unsigned
+transaction (via PumpPortal's trade-local API) and hands it back to
+your browser, which passes it to Phantom for you to review and sign
+locally. The server has no path to move anyone's funds.
+
+This is genuinely untested end-to-end — this sandbox has no network
+access, so none of this has touched real mainnet yet. Before trusting
+it with real money:
+- Test with a very small amount first, on a wallet with little in it
+- Watch the browser console and the /api/trade/solana-build response
+  for errors before assuming a silent failure means nothing happened
+- Double-check slippage (currently hardcoded to 10%) is right for your
+  risk tolerance before using it on a volatile new launch
+
+Robinhood Chain trading is intentionally NOT wired up yet. Hand-writing
+raw Uniswap V3 swap calldata without any way to test it here was judged
+too risky to ship blind — that is next once it can be properly tested,
+ideally against Robinhood Chain testnet first.
