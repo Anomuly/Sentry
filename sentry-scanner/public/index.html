@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sentry — Live Scan</title>
+<title>Sentry</title>
 <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
 <style>
   :root {
-    --bg: #060810; --surface: #0E121C; --surface-2: #161C29; --line: #232A3A;
-    --text: #EDF1F8; --text-dim: #8B93A7; --text-faint: #565F73;
-    --signal: #00E5A0; --danger: #FF4368; --amber: #FFB84D;
-    --sol-a: #14F195; --sol-b: #9945FF;
-    --rh: #00C805;
+    --bg: #0D070A; --surface: #180D12; --surface-2: #22131A; --line: #3D1B26;
+    --text: #F5E8ED; --text-dim: #B08696; --text-faint: #6E4351;
+    --signal: #00E5A0; --danger: #FF2D4E; --amber: #FFB84D;
+    --sol-a: #FF3D68; --sol-b: #8B2FD9;
+    --rh: #FF8A3D;
     --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     --disp: -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
@@ -31,7 +31,7 @@
     display: flex; align-items: center; gap: 9px;
     padding: 16px 16px 12px;
   }
-  .brand-row svg { width: 20px; height: 20px; }
+  .brand-row svg { width: 24px; height: 24px; }
   .brand-row h1 { font-family: var(--disp); font-weight: 700; font-size: 15px; margin: 0; letter-spacing: -0.01em; }
 
   .chain-status { display: flex; gap: 8px; padding: 0 16px 12px; }
@@ -137,7 +137,7 @@
   .section h3 { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 10px; font-weight: 600; }
 
   .flag-list { display: flex; flex-direction: column; gap: 8px; }
-  .flag-item { font-size: 12.5px; padding: 10px 12px; border-radius: 8px; background: rgba(255,67,104,0.08); border: 1px solid rgba(255,67,104,0.25); }
+  .flag-item { font-size: 12.5px; padding: 10px 12px; border-radius: 8px; background: rgba(255,45,78,0.08); border: 1px solid rgba(255,45,78,0.25); }
   .flag-item.ok { background: rgba(0,229,160,0.08); border-color: rgba(0,229,160,0.25); }
 
   .addr-row {
@@ -162,10 +162,10 @@
     transition: background .15s, border-color .15s;
   }
   .action-btn:hover { background: var(--surface-2); }
-  .action-btn.primary.sol { border-color: rgba(20,241,149,0.3); color: var(--sol-a); }
-  .action-btn.primary.sol:hover { background: rgba(20,241,149,0.08); }
-  .action-btn.primary.rh { border-color: rgba(0,200,5,0.35); color: var(--rh); }
-  .action-btn.primary.rh:hover { background: rgba(0,200,5,0.08); }
+  .action-btn.primary.sol { border-color: rgba(255,61,104,0.3); color: var(--sol-a); }
+  .action-btn.primary.sol:hover { background: rgba(255,61,104,0.08); }
+  .action-btn.primary.rh { border-color: rgba(255,138,61,0.35); color: var(--rh); }
+  .action-btn.primary.rh:hover { background: rgba(255,138,61,0.08); }
 
   .trade-panel { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--surface); }
   .trade-warning {
@@ -179,7 +179,7 @@
   .side-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
   .side-btn { flex: 1; padding: 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-dim); font-family: var(--disp); font-weight: 700; font-size: 12px; cursor: pointer; }
   .side-btn.active.buy { background: rgba(0,229,160,0.12); border-color: var(--signal); color: var(--signal); }
-  .side-btn.active.sell { background: rgba(255,67,104,0.12); border-color: var(--danger); color: var(--danger); }
+  .side-btn.active.sell { background: rgba(255,45,78,0.12); border-color: var(--danger); color: var(--danger); }
   .amount-input { width: 100%; padding: 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-family: var(--mono); font-size: 14px; margin-bottom: 10px; outline: none; }
   .amount-input:focus { border-color: var(--sol-b); }
   .execute-btn { width: 100%; padding: 11px; border-radius: 8px; border: none; font-family: var(--disp); font-weight: 700; font-size: 13px; cursor: pointer; }
@@ -187,9 +187,9 @@
   .execute-btn.sell { background: var(--danger); color: #1A0509; }
   .execute-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .trade-status { font-size: 11.5px; margin-top: 10px; padding: 8px 10px; border-radius: 7px; }
-  .trade-status.pending { background: rgba(153,69,255,0.1); color: #C9A8FF; }
+  .trade-status.pending { background: rgba(139,47,217,0.1); color: #C9A8FF; }
   .trade-status.success { background: rgba(0,229,160,0.1); color: var(--signal); }
-  .trade-status.error { background: rgba(255,67,104,0.1); color: var(--danger); }
+  .trade-status.error { background: rgba(255,45,78,0.1); color: var(--danger); }
 
   .toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
@@ -211,11 +211,23 @@
 <div class="app">
   <div class="sidebar">
     <div class="brand-row">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M12 2L4 5.5V11C4 16.2 7.4 20.9 12 22C16.6 20.9 20 16.2 20 11V5.5L12 2Z" stroke="#00E5A0" stroke-width="1.6" fill="rgba(0,229,160,0.08)"/>
-        <path d="M8.5 12L11 14.5L16 9" stroke="#00E5A0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="fireGrad" x1="4" y1="20" x2="20" y2="2" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#8B2FD9"/>
+            <stop offset="55%" stop-color="#FF3D68"/>
+            <stop offset="100%" stop-color="#FFB84D"/>
+          </linearGradient>
+        </defs>
+        <!-- globe -->
+        <circle cx="12" cy="13.5" r="7.2" stroke="url(#fireGrad)" stroke-width="1.5" fill="rgba(139,47,217,0.08)"/>
+        <ellipse cx="12" cy="13.5" rx="7.2" ry="3" stroke="url(#fireGrad)" stroke-width="1" opacity="0.55"/>
+        <path d="M12 6.3V20.7" stroke="url(#fireGrad)" stroke-width="1" opacity="0.55"/>
+        <path d="M5.3 10.5H18.7M5.3 16.5H18.7" stroke="url(#fireGrad)" stroke-width="1" opacity="0.55"/>
+        <!-- flame on top -->
+        <path d="M12 1C12 1 9 4.2 9 6.6C9 8.2 10.3 9.4 12 9.4C13.7 9.4 15 8.2 15 6.6C15 5.6 14.3 4.5 13.7 3.7C13.7 4.4 13.3 5 12.7 5.2C13 4.2 12.6 2.3 12 1Z" fill="url(#fireGrad)"/>
       </svg>
-      <h1>SENTRY — LIVE SCAN</h1>
+      <h1>SENTRY</h1>
     </div>
     <div class="chain-status">
       <div class="chip sol" id="solChip"><span class="dot"></span>SOLANA</div>

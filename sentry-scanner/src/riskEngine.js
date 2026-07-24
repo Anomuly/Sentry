@@ -135,6 +135,33 @@ export class RiskEngine {
     return record;
   }
 
+  // Real bundle-detection signal, fed by server.js polling the token's
+  // bonding curve address directly via free public Solana RPC (see
+  // pumpFeed.js for why that address is available for free). This
+  // replaces the old trade-event-based proxy, which never actually had
+  // data feeding it on the free tier since live trade events require a
+  // paid PumpPortal subscription.
+  //
+  // Still a proxy, not proof: a high transaction count in the first
+  // ~15s is a strong tell of bundled/sniped activity, but confirming
+  // multiple wallets share one funding source (the deepest signal)
+  // still needs the Tier 2 indexer — see fetchFundingGraph below.
+  applyBundleSignal(id, txCountInWindow) {
+    const record = this.tokens.get(id);
+    if (!record || record.bundleSignalApplied) return null;
+    record.bundleSignalApplied = true;
+
+    if (txCountInWindow >= 15) {
+      record.flags.push(`${txCountInWindow} transactions hit this token in its first 15s — likely bundled/sniped`);
+      record.score -= 25;
+    } else if (txCountInWindow >= 8) {
+      record.flags.push(`${txCountInWindow} transactions in the first 15s — higher than organic launches typically see`);
+      record.score -= 10;
+    }
+    record.score = Math.max(0, Math.min(100, record.score));
+    return record;
+  }
+
   // --- TIER 2 (stub) ---
   // Plug in Helius `getAssetsByOwner` / parsed tx history, or Bitquery's
   // TokenSupplyUpdates + DEXTrades, to answer:

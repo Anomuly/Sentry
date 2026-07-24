@@ -99,6 +99,12 @@ export class PumpFeed extends EventEmitter {
         // subscription needed for this one data point.
         marketCapSol: typeof msg.marketCapSol === 'number' ? msg.marketCapSol : null,
         initialBuySol: typeof msg.solAmount === 'number' ? msg.solAmount : null,
+        // Free on the creation event, and the key to real bundle detection
+        // without a paid trade subscription — every buy/sell against this
+        // token hits this account, so polling it directly (see server.js)
+        // gives real transaction-count data instead of a proxy with
+        // nothing feeding it.
+        bondingCurveKey: msg.bondingCurveKey || null,
       });
 
       // Optional paid tier: watch this token's live trades for a

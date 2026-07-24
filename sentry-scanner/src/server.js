@@ -39,12 +39,40 @@ function broadcast(payload) {
 pumpFeed.on('tokenCreated', (evt) => {
   const record = engine.onTokenCreated(evt);
   broadcast({ type: 'token', token: record });
+
+  // Real bundle-detection check: wait until the 15s "bundle window" has
+  // passed, then count how many transactions actually hit the bonding
+  // curve in that time. Free public Solana RPC, no paid key needed —
+  // just rate-limited, so this checks once per token rather than
+  // polling repeatedly.
+  if (evt.bondingCurveKey) {
+    setTimeout(() => checkBundleActivity(evt.mint, evt.bondingCurveKey), 15_000);
+  }
 });
 pumpFeed.on('trade', (evt) => {
   const record = engine.onTrade(evt);
   if (record) broadcast({ type: 'update', token: record });
 });
 pumpFeed.on('status', (status) => broadcast({ type: 'feedStatus', chain: 'solana', status }));
+
+async function checkBundleActivity(mint, bondingCurveKey) {
+  try {
+    const rpcRes = await fetch('https://api.mainnet-beta.solana.com', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'getSignaturesForAddress',
+        params: [bondingCurveKey, { limit: 200 }],
+      }),
+    });
+    const data = await rpcRes.json();
+    const count = Array.isArray(data.result) ? data.result.length : 0;
+    const record = engine.applyBundleSignal(mint, count);
+    if (record) broadcast({ type: 'update', token: record });
+  } catch (err) {
+    console.error('[server] bundle activity check failed:', err.message);
+  }
+}
 
 // --- Robinhood Chain ---
 robinhoodFeed.on('tokenCreated', (evt) => {

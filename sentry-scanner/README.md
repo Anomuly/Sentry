@@ -116,3 +116,33 @@ Robinhood Chain trading is intentionally NOT wired up yet. Hand-writing
 raw Uniswap V3 swap calldata without any way to test it here was judged
 too risky to ship blind — that is next once it can be properly tested,
 ideally against Robinhood Chain testnet first.
+
+## Bundle detection — now backed by real data
+
+Earlier versions had a bundle-detection check that looked reasonable in
+the code but had nothing feeding it, since live trade events require a
+paid PumpPortal key. Fixed properly: Pump.fun's free creation event
+includes the token's bonding curve address (every buy/sell hits this
+account), so the server now polls it directly via free public Solana
+RPC ~15 seconds after each launch and counts real transaction activity.
+High counts in that window get flagged as likely bundled/sniped.
+
+Still a proxy, not proof — confirming multiple wallets share one
+funding source (the deepest signal) still needs a paid indexer, same
+as before. But this is now driven by real on-chain data instead of a
+check that could never fire.
+
+One real constraint worth knowing: this uses the public Solana RPC,
+which is rate-limited and shared by everyone. Under heavy Pump.fun
+launch volume, some of these checks may silently fail to complete —
+they fail quietly rather than break anything, but it means coverage
+isn't 100%. A dedicated RPC provider (Helius' free tier included)
+would make this more reliable.
+
+## Rebrand
+
+Renamed to just Sentry (dropped "Live Scan"), new globe-on-fire logo,
+and a red/purple/black color theme throughout. Score colors (green =
+safe, red = danger, amber = caution) were kept as-is on purpose — that
+mapping is how people already read risk at a glance, and changing it
+would hurt readability more than it would help the aesthetic.
