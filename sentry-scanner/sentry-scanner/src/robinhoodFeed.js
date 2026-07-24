@@ -1,121 +1,99 @@
 // robinhoodFeed.js
 //
-// Robinhood Chain is a fully EVM-compatible Arbitrum Orbit L2 (Chain ID
-// 4663, ETH gas, ~100ms blocks). There's no single "launchpad program
-// address" the way Pump.fun has one on Solana — tokens get deployed
-// as plain ERC-20 contracts, either by hand or through a launchpad UI
-// (Memecoin.Fun is the active one as of writing; Noxa paused launches).
-// So detection here works two ways:
+// Watches Robinhood Chain for new ERC-20 tokens (CASHCAT-style meme
+// coins live here).
 //
-//   1. Watch every new contract deployment on the chain (a tx with
-//      `to: null`), then check if it looks like an ERC-20 (has the
-//      standard name/symbol/totalSupply methods).
-//   2. Watch the Uniswap V3 factory for PoolCreated events — this is
-//      the moment a token actually becomes tradeable, which is the
-//      signal that matters most (a deployed-but-unlisted contract is
-//      not yet a "launch" a trader needs to know about).
+// WHY THIS WAS REWRITTEN — the previous version scanned blocks directly
+// via ethers `provider.on('block')` and it fundamentally could not work:
+//   - Robinhood Chain produces a block every ~100ms. ethers' HTTP
+//     provider polls roughly every 4 seconds, so it saw about 1 block
+//     in 40 and silently missed ~97% of all activity.
+//   - For every contract-creation tx it found, it made a getReceipt
+//     call plus two contract calls (name/symbol) — against a public
+//     RPC that is explicitly rate-limited and "not recommended for
+//     production". Under any real launch volume it would be throttled
+//     into uselessness.
+// That's why no Robinhood tokens ever appeared in the dashboard.
 //
-// Public endpoints (free, rate-limited, fine for development —
-// swap for an Alchemy/QuickNode/Chainstack Robinhood Chain endpoint
-// before relying on this for anything real):
-//   RPC:  https://rpc.mainnet.chain.robinhood.com
-//   Verify the mainnet WS feed URL in Robinhood's docs before
-//   depending on it — only the testnet WS (wss://feed.testnet.chain.robinhood.com)
-//   is confirmed in public docs as of this writing.
+// This version polls Robinhood Chain's Blockscout explorer API, which
+// already indexes every token on the chain and returns them in one
+// request. Blockscout is the official explorer for the chain (linked
+// from Robinhood's own docs), the API is free and needs no key, and
+// one HTTP call replaces thousands of RPC calls.
 
-import { ethers } from 'ethers';
 import { EventEmitter } from 'events';
 
-const RPC_URL = 'https://rpc.mainnet.chain.robinhood.com';
-
-// Canonical Uniswap V3 factory address — same across most EVM chains via
-// CREATE2, but CONFIRM this is actually deployed at this address on
-// Robinhood Chain before trusting it in production.
-const UNISWAP_V3_FACTORY = '0x1F98431c8aD98523631AE4a59f267346ea31F984';
-const POOL_CREATED_TOPIC = ethers.id(
-  'PoolCreated(address,address,uint24,int24,address)'
-);
-
-const ERC20_ABI = [
-  'function name() view returns (string)',
-  'function symbol() view returns (string)',
-  'function totalSupply() view returns (uint256)',
-];
+const BLOCKSCOUT_BASE = 'https://robinhoodchain.blockscout.com';
+const POLL_INTERVAL_MS = 20_000;
 
 export class RobinhoodFeed extends EventEmitter {
   constructor() {
     super();
-    this.provider = new ethers.JsonRpcProvider(RPC_URL);
-    this._watchBlocks();
-    this._watchPools();
+    this.seen = new Set();
+    this.firstRun = true;
+    this._poll();
+    setInterval(() => this._poll(), POLL_INTERVAL_MS);
   }
 
-  _watchBlocks() {
-    this.provider.on('block', async (blockNumber) => {
-      try {
-        const block = await this.provider.getBlock(blockNumber, true);
-        if (!block || !block.prefetchedTransactions) return;
+  async _poll() {
+    try {
+      const res = await fetch(`${BLOCKSCOUT_BASE}/api/v2/tokens?type=ERC-20`, {
+        headers: { 'accept': 'application/json' },
+      });
+      if (!res.ok) throw new Error(`Blockscout returned ${res.status}`);
 
-        for (const tx of block.prefetchedTransactions) {
-          if (tx.to !== null) continue; // only contract-creation txs
+      const data = await res.json();
+      const items = Array.isArray(data.items) ? data.items : [];
 
-          const receipt = await this.provider.getTransactionReceipt(tx.hash);
-          if (!receipt || !receipt.contractAddress) continue;
+      for (const item of items) {
+        const address = item.address || item.address_hash;
+        if (!address || this.seen.has(address)) continue;
+        this.seen.add(address);
 
-          const info = await this._probeErc20(receipt.contractAddress);
-          if (!info) continue; // not an ERC-20, skip
-
-          this.emit('tokenCreated', {
-            address: receipt.contractAddress,
-            creator: tx.from,
-            name: info.name,
-            symbol: info.symbol,
-            createdAt: Date.now(),
-            chain: 'robinhood',
-          });
-        }
-      } catch (err) {
-        console.error('[robinhoodFeed] block scan error:', err.message);
-      }
-    });
-
-    this.emit('status', 'connected');
-  }
-
-  _watchPools() {
-    // Fires the moment a token actually gets a trading pool — this is
-    // the real "it's live" signal, analogous to a Pump.fun graduation.
-    this.provider.on(
-      { address: UNISWAP_V3_FACTORY, topics: [POOL_CREATED_TOPIC] },
-      (log) => {
-        this.emit('poolCreated', {
-          txHash: log.transactionHash,
-          timestamp: Date.now(),
+        this.emit('tokenCreated', {
+          address,
+          creator: null, // Blockscout's token list doesn't include the deployer
+          name: item.name || null,
+          symbol: item.symbol || null,
+          createdAt: Date.now(),
           chain: 'robinhood',
-          raw: log,
+          holders: item.holders ? Number(item.holders) : null,
+          totalSupply: item.total_supply || null,
+          iconUrl: item.icon_url || null,
+          // Blockscout surfaces a fiat market cap for tokens it has
+          // price data on. Frequently null for brand-new meme coins.
+          marketCapUsd: item.circulating_market_cap ? Number(item.circulating_market_cap) : null,
         });
       }
-    );
-  }
 
-  async _probeErc20(address) {
-    try {
-      const contract = new ethers.Contract(address, ERC20_ABI, this.provider);
-      const [name, symbol] = await Promise.all([
-        contract.name(),
-        contract.symbol(),
-      ]);
-      if (!name || !symbol) return null;
-      return { name, symbol };
-    } catch {
-      return null; // not ERC-20-shaped, or reverted — skip silently
+      if (this.firstRun) {
+        this.firstRun = false;
+        console.log(`[robinhoodFeed] connected — seeded ${items.length} existing tokens from Blockscout`);
+      }
+      this.emit('status', 'connected');
+    } catch (err) {
+      console.error('[robinhoodFeed] poll failed:', err.message);
+      this.emit('status', 'disconnected');
     }
   }
 
-  // Public entry point for on-demand lookups (used by /api/lookup for
-  // addresses the live feed hasn't seen this session).
+  // On-demand lookup for /api/lookup, using the same explorer API.
   async probeAddress(address) {
-    const info = await this._probeErc20(address);
-    return info; // null if not an ERC-20-shaped contract
+    try {
+      const res = await fetch(`${BLOCKSCOUT_BASE}/api/v2/tokens/${address}`, {
+        headers: { 'accept': 'application/json' },
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (!data || (!data.name && !data.symbol)) return null;
+      return {
+        name: data.name || null,
+        symbol: data.symbol || null,
+        holders: data.holders ? Number(data.holders) : null,
+        totalSupply: data.total_supply || null,
+      };
+    } catch {
+      return null;
+    }
   }
 }
