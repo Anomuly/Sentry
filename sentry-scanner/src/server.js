@@ -34,7 +34,7 @@ const FEE_BPS = Number(process.env.FEE_BPS || 0); // basis points, e.g. 50 = 0.5
 // downstream. Setting SOLANA_RPC_URL to a dedicated endpoint is the
 // single highest-impact upgrade available — Alchemy's free tier (30M
 // compute units/month) and Helius's (1M credits) both work.
-const RPC_URL = RPC_URL;
+const RPC_URL = process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com';
 if (!process.env.SOLANA_RPC_URL) {
   console.warn('[server] Using public Solana RPC — rate limited and ~2-5s behind chain head. Set SOLANA_RPC_URL for materially better performance.');
 }
