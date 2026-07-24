@@ -16,6 +16,7 @@ import { RobinhoodFeed } from './robinhoodFeed.js';
 import { RiskEngine } from './riskEngine.js';
 import { getOhlcv } from './chartData.js';
 import { DeepScanner } from './deepScan.js';
+import { CurveTracker } from './curveTracker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 8080;
@@ -36,6 +37,7 @@ const server = createServer(app);
 const wss = new WebSocketServer({ server, path: '/live' });
 
 const engine = new RiskEngine();
+const curveTracker = new CurveTracker();
 const deepScanner = new DeepScanner(engine, (token) => broadcast({ type: 'update', token }));
 const pumpFeed = new PumpFeed();
 const robinhoodFeed = new RobinhoodFeed();
@@ -58,6 +60,7 @@ pumpFeed.on('tokenCreated', (evt) => {
   // just rate-limited, so this checks once per token rather than
   // polling repeatedly.
   if (evt.bondingCurveKey) {
+    record.bondingCurveKey = evt.bondingCurveKey;
     setTimeout(() => checkBundleActivity(evt.mint, evt.bondingCurveKey), 15_000);
   }
 
@@ -192,50 +195,37 @@ app.get('/api/lookup', async (req, res) => {
 app.get('/api/chart', async (req, res) => {
   const address = (req.query.address || '').trim();
   const chain = (req.query.chain || 'solana').trim();
+  const bucket = Number(req.query.bucket) > 0 ? Number(req.query.bucket) : 5000;
+  if (!address) return res.status(400).json({ error: 'address required' });
+
+  const record = engine.getToken(address);
+
+  // PREFERRED PATH for anything still on a bonding curve: read the
+  // curve's own reserves. This is the only source that works for
+  // brand-new launches, which is most of what Sentry shows.
+  if (chain === 'solana' && record && record.bondingCurveKey) {
+    curveTracker.track(address, record.bondingCurveKey);
+    const live = curveTracker.getCandles(address, bucket);
+    if (live.candles.length) return res.json(live);
+
+    // Tracking just started — the first sample lands within ~2s.
+    return res.json({
+      candles: [],
+      source: 'curve',
+      tracking: true,
+      reason: 'Reading the bonding curve now — the first candles appear within a few seconds.',
+    });
+  }
+
+  // FALLBACK for graduated tokens (they have a real pool, and
+  // GeckoTerminal gives proper OHLCV including real volume).
   const timeframe = ['minute', 'hour', 'day'].includes(req.query.timeframe) ? req.query.timeframe : 'minute';
   const aggregate = Number(req.query.aggregate) > 0 ? Number(req.query.aggregate) : 1;
-
-  if (!address) return res.status(400).json({ error: 'address required' });
-
   try {
     const data = await getOhlcv(chain, address, timeframe, aggregate, 120);
-    res.json(data);
+    res.json({ ...data, source: 'pool' });
   } catch (err) {
     res.status(500).json({ error: 'Chart fetch failed: ' + err.message, candles: [] });
-  }
-});
-
-// Top holders for the holders panel. Free public RPC.
-// Returns token ACCOUNT addresses (not owner wallets) — resolving each
-// to its owner would cost ~20 extra RPC calls per request, which the
-// public endpoint won't sustain. Labeled as such in the UI.
-app.get('/api/holders', async (req, res) => {
-  const address = (req.query.address || '').trim();
-  if (!address) return res.status(400).json({ error: 'address required' });
-
-  try {
-    const rpcRes = await fetch(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0', id: 1, method: 'getTokenLargestAccounts', params: [address],
-      }),
-    });
-    const json = await rpcRes.json();
-    const accounts = json?.result?.value || [];
-    const total = accounts.reduce((s, a) => s + (Number(a.uiAmount) || 0), 0);
-
-    res.json({
-      holders: accounts.map((a, i) => ({
-        account: a.address,
-        amount: Number(a.uiAmount) || 0,
-        share: total > 0 ? ((Number(a.uiAmount) || 0) / total) * 100 : 0,
-        isLikelyCurve: i === 0, // largest is usually the bonding curve pre-graduation
-      })),
-      total,
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message, holders: [] });
   }
 });
 

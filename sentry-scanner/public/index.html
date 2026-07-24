@@ -126,6 +126,26 @@
   .stat .k { font-size: 8.5px; color: var(--text-faint); }
   .stat .v { font-family: var(--disp); font-weight: 700; font-size: 12.5px; margin-top: 1px; }
 
+  .gradwrap { padding: 7px 14px; border-bottom: 1px solid var(--line); }
+  .gradtop { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--text-faint); margin-bottom: 4px; }
+  .gradbar { height: 5px; border-radius: 3px; background: var(--surface-3); overflow: hidden; }
+  .gradbar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-2), var(--accent), var(--gold)); transition: width .4s; }
+  .pmtoggle { display: flex; gap: 0; }
+  .pmtoggle button {
+    font-size: 9.5px; font-weight: 700; padding: 4px 9px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text-faint);
+  }
+  .pmtoggle button:first-child { border-radius: 5px 0 0 5px; }
+  .pmtoggle button:last-child { border-radius: 0 5px 5px 0; border-left: none; }
+  .pmtoggle button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .avwrap { position: relative; flex-shrink: 0; }
+  .chainbadge {
+    position: absolute; bottom: -1px; right: -1px; width: 12px; height: 12px;
+    border-radius: 50%; border: 2px solid var(--surface); font-size: 6px;
+    display: flex; align-items: center; justify-content: center; font-weight: 800; color: #fff;
+  }
+  .chainbadge.sol { background: linear-gradient(135deg,#14F195,#9945FF); }
+  .chainbadge.rh { background: #00C805; }
   .charttools { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .tfs { display: flex; gap: 3px; }
   .tf { font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-faint); }
@@ -133,7 +153,8 @@
   .ohlc { font-size: 10px; color: var(--text-faint); display: flex; gap: 10px; flex-wrap: wrap; }
   .ohlc b { color: var(--text); font-weight: 600; }
   .chartbox { flex: 1; position: relative; min-height: 200px; }
-  #chart { width: 100%; height: 100%; display: block; }
+  #chart, #chartOverlay { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #chartOverlay { pointer-events: none; z-index: 4; }
   .chartmsg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 30px; color: var(--text-faint); font-size: 11.5px; line-height: 1.7; }
   .ttip { position: absolute; pointer-events: none; z-index: 6; background: rgba(10,5,12,0.96); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 10px; line-height: 1.6; white-space: nowrap; opacity: 0; transition: opacity .1s; }
   .ttip.show { opacity: 1; }
@@ -246,6 +267,7 @@
     </div>
     <div id="coinView" style="display:none; flex-direction:column; flex:1; min-height:0;">
       <div class="coinhead" id="coinhead"></div>
+      <div class="gradwrap" id="gradwrap" style="display:none;"></div>
       <div class="charttools">
         <div class="tfs" id="tfs">
           <button class="tf active" data-tf="minute" data-agg="1">1m</button>
@@ -257,6 +279,10 @@
         </div>
         <div class="ohlc" id="ohlc"></div>
         <div class="chartbtns">
+          <div class="pmtoggle" title="Toggle chart values between price and market cap">
+            <button id="btnPrice" class="on">Price</button>
+            <button id="btnMcap">MCap</button>
+          </div>
           <button class="cbtn" id="btnZoomOut" title="Zoom out">−</button>
           <button class="cbtn" id="btnZoomIn" title="Zoom in">+</button>
           <button class="cbtn" id="btnFit" title="Fit all candles">Fit</button>
@@ -265,6 +291,7 @@
       </div>
       <div class="chartbox">
         <canvas id="chart"></canvas>
+        <canvas id="chartOverlay"></canvas>
         <div class="ttip" id="ttip"></div>
         <div class="chartmsg" id="chartmsg">Loading chart…</div>
         <div class="charthint">scroll to zoom · drag to pan</div>
@@ -312,6 +339,9 @@ const imageCache = new Map();
 let solUsd = null, filter = 'all', selectedId = null;
 let walletPubkey = null, side = 'buy', btmPanel = 'holders';
 let chartState = { tf: 'minute', agg: 1, candles: [], token: null };
+let chartValueMode = 'price'; // 'price' | 'mcap'
+let curveStats = {};
+const PUMP_SUPPLY = 1e9;
 let chartFetchId = 0;
 
 const scoreCls = s => s >= 70 ? 'up' : s >= 40 ? 'warn' : 'down';
@@ -331,8 +361,12 @@ function avatar(t, cls){
   const init=(t.symbol||'?').slice(0,1).toUpperCase();
   const cached=imageCache.get(t.id);
   const src=t.iconUrl||(cached&&cached!=='failed'&&cached!=='pending'?cached:null);
-  if(src) return `<div class="av ${cls||''}"><img src="${src}" onerror="this.parentElement.textContent='${init}'"/></div>`;
-  return `<div class="av ${cls||''}">${init}</div>`;
+  const ch=t.chain==='robinhood'?'rh':'sol';
+  const badge=`<span class="chainbadge ${ch}">${ch==='sol'?'S':'R'}</span>`;
+  const inner = src
+    ? `<div class="av ${cls||''}"><img src="${src}" onerror="this.parentElement.textContent='${init}'"/></div>`
+    : `<div class="av ${cls||''}">${init}</div>`;
+  return `<span class="avwrap">${inner}${badge}</span>`;
 }
 async function resolveImage(t){
   if(!t.uri||imageCache.has(t.id)) return;
@@ -391,9 +425,35 @@ function select(id){
   renderCoinHead(t); renderRight(t); renderBtm(t); wireChart(t); loadChart(t);
 }
 
+// Bonding curve graduation progress — Pump.fun's own signature metric,
+// derived from the SOL actually sitting in the curve. Free to compute.
+function renderGraduation(t){
+  const gw=document.getElementById('gradwrap');
+  if(!gw) return;
+  const cs=curveStats[t.id];
+  if(!cs || cs.gradProgress==null){ gw.style.display='none'; return; }
+  gw.style.display='block';
+  if(cs.complete){
+    gw.innerHTML=`<div class="gradtop"><span style="color:var(--up)">✓ GRADUATED — migrated off the bonding curve</span></div>
+      <div class="gradbar"><i style="width:100%"></i></div>`;
+    return;
+  }
+  const pct=(cs.gradProgress*100);
+  const solIn=(cs.liquiditySol||0).toFixed(2);
+  gw.innerHTML=`<div class="gradtop">
+      <span>BONDING CURVE · ${solIn} SOL in curve</span>
+      <span>${pct.toFixed(1)}% to graduation</span>
+    </div>
+    <div class="gradbar"><i style="width:${Math.min(100,pct)}%"></i></div>`;
+}
+
 function renderCoinHead(t){
   const mc=mcapOf(t);
   const priceUsd=t.priceSol!=null&&solUsd?t.priceSol*solUsd:null;
+  // Live values from the bonding curve beat the creation-time snapshot.
+  const cs=curveStats[t.id];
+  const livePriceUsd=cs&&cs.lastPrice!=null&&solUsd?cs.lastPrice*solUsd:null;
+  const liveMc=livePriceUsd!=null?livePriceUsd*PUMP_SUPPLY:null;
   coinhead.innerHTML=`
     <div class="coinid">${avatar(t,'lg')}
       <div>
@@ -403,8 +463,9 @@ function renderCoinHead(t){
       </div>
     </div>
     <div class="statrow">
-      <div class="stat"><div class="k">MARKET CAP</div><div class="v">${mc!=null?fmtUsd(mc):'—'}</div></div>
-      <div class="stat"><div class="k">PRICE</div><div class="v">${fmtPrice(priceUsd??t.priceSol)}</div></div>
+      <div class="stat"><div class="k">MARKET CAP</div><div class="v">${liveMc!=null?fmtUsd(liveMc):(mc!=null?fmtUsd(mc):'—')}</div></div>
+      <div class="stat"><div class="k">PRICE</div><div class="v">${fmtPrice(livePriceUsd??priceUsd??t.priceSol)}</div></div>
+      <div class="stat"><div class="k">LIQUIDITY</div><div class="v">${cs&&cs.liquiditySol!=null?(solUsd?fmtUsd(cs.liquiditySol*solUsd):cs.liquiditySol.toFixed(1)+' SOL'):'—'}</div></div>
       <div class="stat"><div class="k">TRUST</div><div class="v ${scoreCls(t.score)}">${t.score}</div></div>
       <div class="stat"><div class="k">FLAGS</div><div class="v ${t.flags&&t.flags.length?'down':'up'}">${(t.flags||[]).length}</div></div>
       <div class="stat"><div class="k">AGE</div><div class="v" data-created="${t.createdAt}">0s</div></div>
@@ -442,7 +503,7 @@ async function renderBtm(t){
     const r=await fetch('/api/holders?address='+encodeURIComponent(t.id));
     const d=await r.json();
     if(!d.holders||!d.holders.length){ btmbody.innerHTML=`<div class="panel-note">No holder data returned yet.</div>`; return; }
-    btmbody.innerHTML=`<table class="data">
+    btmbody.innerHTML=`<div style="padding:8px 14px 4px;font-family:var(--disp);font-weight:700;font-size:11px;">Top holders <span style="color:var(--text-faint);font-weight:400">(top ${d.holders.length} accounts)</span></div><table class="data">
       <thead><tr><th>#</th><th>TOKEN ACCOUNT</th><th>BALANCE</th><th>SHARE</th><th></th></tr></thead>
       <tbody>${d.holders.map((h,i)=>`<tr>
         <td style="color:var(--text-faint)">${i+1}</td>
@@ -560,6 +621,14 @@ async function loadChart(t){
     if(id!==chartFetchId) return;
     const prevLen = chartState.candles.length;
     chartState.candles=d.candles||[];
+    chartState.source=d.source||'pool';
+    if(d.source==='curve'){
+      curveStats[t.id]={ liquiditySol:d.liquiditySol, gradProgress:d.gradProgress, lastPrice:d.lastPrice, complete:d.complete };
+      renderGraduation(t);
+      renderCoinHead(t);
+    } else {
+      const gw=document.getElementById('gradwrap'); if(gw) gw.style.display='none';
+    }
     // Preserve the user's zoom/pan across refreshes. Only reset the
     // viewport when switching token/timeframe, not when new candles
     // stream in — otherwise zooming in would be undone every 30s.
@@ -590,6 +659,7 @@ async function loadChart(t){
 let view = { start: 0, count: 0, follow: true };
 let cross = { x: null, y: null, active: false };
 let drag = { on: false, x0: 0, start0: 0 };
+let panRaf = null;
 const MIN_CANDLES = 8;   // hard zoom-in limit
 const PAD = { L: 10, R: 64, T: 10, B: 20 };
 
@@ -628,15 +698,23 @@ function drawChart() {
   clampView();
 
   const { s, e } = visibleSlice();
-  const k = all.slice(s, e);
+  let k = all.slice(s, e);
   if (!k.length) return;
+
+  // Market-cap mode is a pure display transform: mcap = price × supply,
+  // and supply is fixed at 1B for Pump.fun tokens. Candle shape is
+  // identical, only the axis scale changes.
+  if (chartValueMode === 'mcap') {
+    const mult = (solUsd || 0) * PUMP_SUPPLY;
+    if (mult > 0) k = k.map(c => ({ ...c, o: c.o*mult, h: c.h*mult, l: c.l*mult, c: c.c*mult }));
+  }
 
   const volH = Math.round(H * 0.2);
   const priceH = H - PAD.T - PAD.B - volH - 8;
   let hi = Math.max(...k.map(c => c.h)), lo = Math.min(...k.map(c => c.l));
   if (hi === lo) { hi *= 1.02; lo *= 0.98; }
   const pd = (hi - lo) * 0.08; hi += pd; lo -= pd;
-  const maxV = Math.max(...k.map(c => c.v), 1);
+  const maxV = Math.max(...k.map(c => c.v || 0), 1);
 
   const plotW = W - PAD.L - PAD.R;
   const step = plotW / view.count;
@@ -653,7 +731,7 @@ function drawChart() {
     const p = lo + (hi - lo) * (i / 4), y = yP(p);
     g.strokeStyle = 'rgba(255,255,255,0.045)';
     g.beginPath(); g.moveTo(PAD.L, y); g.lineTo(W - PAD.R, y); g.stroke();
-    g.fillStyle = '#6E4351'; g.fillText(fmtPrice(p), W - PAD.R + 6, y);
+    g.fillStyle = '#6E4351'; g.fillText(chartValueMode==='mcap'?fmtUsd(p):fmtPrice(p), W - PAD.R + 6, y);
   }
 
   // time axis (a few evenly spaced labels)
@@ -671,15 +749,20 @@ function drawChart() {
   }
   g.textAlign = 'left';
 
-  // volume
-  k.forEach((c, i) => {
-    const gi = s + i;
-    const x = xAt(gi) - bw / 2;
-    if (x + bw < PAD.L || x > W - PAD.R) return;
-    g.fillStyle = c.c >= c.o ? 'rgba(0,229,160,0.32)' : 'rgba(255,45,78,0.32)';
-    const y = yV(c.v);
-    g.fillRect(x, y, bw, (PAD.T + priceH + 8 + volH) - y);
-  });
+  // volume — only when the data source actually provides it. Bonding
+  // curve data gives price but not per-trade size, so rather than
+  // inventing bars from price movement, the volume lane is left out.
+  const hasVolume = k.some(c => c.v != null);
+  if (hasVolume) {
+    k.forEach((c, i) => {
+      const gi = s + i;
+      const x = xAt(gi) - bw / 2;
+      if (x + bw < PAD.L || x > W - PAD.R) return;
+      g.fillStyle = c.c >= c.o ? 'rgba(0,229,160,0.32)' : 'rgba(255,45,78,0.32)';
+      const y = yV(c.v || 0);
+      g.fillRect(x, y, bw, (PAD.T + priceH + 8 + volH) - y);
+    });
+  }
 
   // candles
   k.forEach((c, i) => {
@@ -697,10 +780,13 @@ function drawChart() {
   // volume divider + label
   g.strokeStyle = 'rgba(255,255,255,0.06)';
   g.beginPath(); g.moveTo(PAD.L, PAD.T + priceH + 4); g.lineTo(W - PAD.R, PAD.T + priceH + 4); g.stroke();
-  g.fillStyle = '#6E4351'; g.fillText('VOL ' + fmtVol(maxV), PAD.L + 2, PAD.T + priceH + 16);
+  g.fillStyle = '#6E4351';
+  g.fillText(hasVolume ? 'VOL ' + fmtVol(maxV) : 'bonding curve price — volume needs the paid trade stream', PAD.L + 2, PAD.T + priceH + 16);
 
   // last-price marker line
-  const last = all[all.length - 1];
+  const rawLast = all[all.length - 1];
+  const mult = chartValueMode === 'mcap' ? (solUsd || 0) * PUMP_SUPPLY : 1;
+  const last = rawLast && mult ? { ...rawLast, c: rawLast.c * (chartValueMode==='mcap'?mult:1), o: rawLast.o } : rawLast;
   const lastVisible = last && (all.length - 1) >= view.start && (all.length - 1) < view.start + view.count;
   if (lastVisible) {
     const y = yP(last.c);
@@ -711,40 +797,65 @@ function drawChart() {
     g.fillStyle = last.c >= last.o ? '#00E5A0' : '#FF2D4E';
     g.fillRect(W - PAD.R + 2, y - 7, PAD.R - 4, 14);
     g.fillStyle = '#0A050C';
-    g.fillText(fmtPrice(last.c), W - PAD.R + 6, y);
+    g.fillText(chartValueMode==='mcap'?fmtUsd(last.c):fmtPrice(last.c), W - PAD.R + 6, y);
   }
 
-  // crosshair
-  if (cross.active && cross.x != null) {
-    g.setLineDash([2, 3]);
-    g.strokeStyle = 'rgba(246,233,239,0.35)';
-    g.beginPath(); g.moveTo(cross.x, PAD.T); g.lineTo(cross.x, H - PAD.B); g.stroke();
-    if (cross.y != null && cross.y > PAD.T && cross.y < PAD.T + priceH) {
-      g.beginPath(); g.moveTo(PAD.L, cross.y); g.lineTo(W - PAD.R, cross.y); g.stroke();
-      const pv = lo + (1 - (cross.y - PAD.T) / priceH) * (hi - lo);
-      g.setLineDash([]);
-      g.fillStyle = '#281424';
-      g.fillRect(W - PAD.R + 2, cross.y - 7, PAD.R - 4, 14);
-      g.fillStyle = '#F6E9EF';
-      g.fillText(fmtPrice(pv), W - PAD.R + 6, cross.y);
-    }
-    g.setLineDash([]);
-  }
+  // Cache the geometry the overlay needs so the crosshair can be drawn
+  // without recomputing or repainting the candles.
+  lastGeom = { W, H, lo, hi, priceH, step, volH };
 
   updateOhlcReadout(k);
+}
+
+let lastGeom = null;
+
+// Crosshair lives on its own canvas. Redrawing every candle on every
+// mousemove was the reason the chart felt sluggish — this repaints only
+// two lines and a label instead.
+function drawOverlay() {
+  const ov = document.getElementById('chartOverlay');
+  if (!ov || !lastGeom) return;
+  const dpr = window.devicePixelRatio || 1;
+  const { W, H, lo, hi, priceH } = lastGeom;
+  if (ov.width !== W * dpr || ov.height !== H * dpr) {
+    ov.width = W * dpr; ov.height = H * dpr;
+  }
+  const g = ov.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  if (!cross.active || cross.x == null) return;
+
+  g.font = '9.5px ui-monospace, monospace';
+  g.textBaseline = 'middle';
+  g.setLineDash([2, 3]);
+  g.strokeStyle = 'rgba(246,233,239,0.4)';
+  g.beginPath(); g.moveTo(cross.x, PAD.T); g.lineTo(cross.x, H - PAD.B); g.stroke();
+
+  if (cross.y != null && cross.y > PAD.T && cross.y < PAD.T + priceH) {
+    g.beginPath(); g.moveTo(PAD.L, cross.y); g.lineTo(W - PAD.R, cross.y); g.stroke();
+    const pv = lo + (1 - (cross.y - PAD.T) / priceH) * (hi - lo);
+    g.setLineDash([]);
+    g.fillStyle = '#281424';
+    g.fillRect(W - PAD.R + 2, cross.y - 7, PAD.R - 4, 14);
+    g.fillStyle = '#F6E9EF';
+    g.fillText(chartValueMode==='mcap'?fmtUsd(pv):fmtPrice(pv), W - PAD.R + 6, cross.y);
+  }
+  g.setLineDash([]);
 }
 
 function updateOhlcReadout(k) {
   const ohlc = document.getElementById('ohlc');
   if (!ohlc || !k.length) return;
+  const f = chartValueMode === 'mcap' ? fmtUsd : fmtPrice;
   const last = k[k.length - 1], first = k[0];
   const chg = ((last.c - first.o) / first.o) * 100;
-  const tv = k.reduce((s, c) => s + c.v, 0);
+  const tv = k.reduce((s, c) => s + (c.v || 0), 0);
+  const hasVol = k.some(c => c.v != null);
   ohlc.innerHTML =
-    `<span>O <b>${fmtPrice(last.o)}</b></span><span>H <b>${fmtPrice(last.h)}</b></span>` +
-    `<span>L <b>${fmtPrice(last.l)}</b></span><span>C <b>${fmtPrice(last.c)}</b></span>` +
+    `<span>O <b>${f(last.o)}</b></span><span>H <b>${f(last.h)}</b></span>` +
+    `<span>L <b>${f(last.l)}</b></span><span>C <b>${f(last.c)}</b></span>` +
     `<span class="${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>` +
-    `<span>VOL <b>${fmtVol(tv)}</b></span>`;
+    (hasVol ? `<span>VOL <b>${fmtVol(tv)}</b></span>` : '');
 }
 
 function setFollow(on) {
@@ -802,7 +913,10 @@ function bindChartInteraction() {
       const dx = e.clientX - drag.x0;
       view.start = drag.start0 - dx / step;
       clampView();
-      drawChart();
+      // Coalesce pan redraws to one per animation frame instead of one
+      // per mousemove event — mousemove can fire far faster than the
+      // display refreshes.
+      if (!panRaf) panRaf = requestAnimationFrame(() => { panRaf = null; drawChart(); drawOverlay(); });
       return;
     }
 
@@ -816,20 +930,21 @@ function bindChartInteraction() {
     if (tip) {
       if (c) {
         const d = new Date(c.t * 1000);
-        tip.innerHTML = `${d.toLocaleTimeString()}<br>O ${fmtPrice(c.o)} H ${fmtPrice(c.h)}<br>L ${fmtPrice(c.l)} C ${fmtPrice(c.c)}<br>Vol ${fmtVol(c.v)}`;
+        const volLine = c.v == null ? '' : `<br>Vol ${fmtVol(c.v)}`;
+        tip.innerHTML = `${d.toLocaleTimeString()}<br>O ${fmtPrice(c.o)} H ${fmtPrice(c.h)}<br>L ${fmtPrice(c.l)} C ${fmtPrice(c.c)}${volLine}`;
         tip.style.left = Math.min(cross.x + 14, W - 160) + 'px';
         tip.style.top = '10px';
         tip.classList.add('show');
       } else tip.classList.remove('show');
     }
-    drawChart();
+    drawOverlay(); // cheap — no candle repaint
   });
 
   cv.addEventListener('mouseleave', () => {
     cross.active = false;
     const tip = document.getElementById('ttip');
     if (tip) tip.classList.remove('show');
-    drawChart();
+    drawOverlay();
   });
 
   // ---- double-click resets to fit ----
@@ -841,6 +956,14 @@ function bindChartInteraction() {
   });
 
   // ---- toolbar buttons ----
+  const bp = document.getElementById('btnPrice');
+  const bm = document.getElementById('btnMcap');
+  if (bp) bp.onclick = () => { chartValueMode='price'; bp.classList.add('on'); if(bm) bm.classList.remove('on'); drawChart(); drawOverlay(); };
+  if (bm) bm.onclick = () => {
+    if (!solUsd) { showToast('Waiting on SOL price — try again in a moment'); return; }
+    chartValueMode='mcap'; bm.classList.add('on'); if(bp) bp.classList.remove('on'); drawChart(); drawOverlay();
+  };
+
   const zi = document.getElementById('btnZoomIn');
   const zo = document.getElementById('btnZoomOut');
   const fit = document.getElementById('btnFit');
@@ -863,7 +986,14 @@ function wireChart(t){
   });
 }
 window.addEventListener('resize',()=>{ if(chartState.candles.length) drawChart(); });
-setInterval(()=>{ if(chartState.token&&selectedId===chartState.token.id) loadChart(chartState.token); },30000);
+// Curve data samples every ~2s server-side, so refresh at a matching
+// cadence when that's the source; pool data changes far slower.
+setInterval(()=>{
+  if(chartState.token && selectedId===chartState.token.id && chartState.source==='curve') loadChart(chartState.token);
+}, 3000);
+setInterval(()=>{
+  if(chartState.token && selectedId===chartState.token.id && chartState.source!=='curve') loadChart(chartState.token);
+}, 30000);
 
 function b64ToBytes(b64){ const bin=atob(b64), out=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) out[i]=bin.charCodeAt(i); return out; }
 async function connectPhantom(){

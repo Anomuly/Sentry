@@ -298,3 +298,68 @@ zooming useless in practice.
 "Live" mode keeps the view pinned to the newest candle as data streams
 in; it turns itself off as soon as you manually zoom or pan, so the
 chart doesn't yank away from what you're looking at.
+
+## Chart rebuilt on bonding curve data (v0.8)
+
+**The previous chart could never have worked for this product**, and
+that was a design mistake worth naming: it used GeckoTerminal, which
+only indexes tokens that already have a liquidity pool. Sentry's entire
+feed is brand-new Pump.fun launches still on the bonding curve, which
+have no pool. So the chart was empty for essentially every token in the
+list.
+
+Fixed by reading the bonding curve directly. A bonding curve is a
+formula, not an order book — its price is fully determined by the
+reserves in one on-chain account. The server polls that account
+(`getMultipleAccounts`, batched across all tracked tokens in a single
+RPC call), decodes the reserves, and aggregates the samples into OHLC
+candles. Free, no indexer, and it works from the token's first second
+of existence.
+
+Graduated tokens still fall back to GeckoTerminal, which has real
+volume data for them.
+
+### Volume, honestly
+A bonding curve exposes price, not per-trade size. Rather than
+fabricate volume bars out of price movement, the volume lane is simply
+omitted for curve-sourced charts and the axis says so. Real volume
+needs the paid trade stream.
+
+### Performance
+The chart previously repainted every candle on every mousemove to draw
+the crosshair — that's what made it feel slow. The crosshair now lives
+on a separate overlay canvas, so moving the mouse repaints two lines
+instead of the whole chart. Pan redraws are also coalesced to one per
+animation frame rather than one per mouse event.
+
+Refresh cadence matches the source: ~3s for live curve data (which
+samples every 2s), 30s for pool data.
+
+## v0.9 — features pulled from the fomo reference screenshots
+
+Added, all from data already available for free:
+
+- **Price / MCap toggle** on the chart, matching fomo's. Market cap is
+  price × 1B (fixed Pump.fun supply), so it's a pure display transform
+  — same candles, different axis.
+- **Graduation progress bar** — Pump.fun's signature metric. Read from
+  the SOL actually sitting in the bonding curve against the ~85 SOL
+  graduation threshold. Shows "GRADUATED" once the curve completes.
+- **Liquidity stat pill** — the curve's real SOL reserves. This is
+  genuine liquidity, not an estimate.
+- **Live price + market cap** in the header, sourced from the curve
+  rather than the creation-time snapshot, so they move in real time.
+- **Chain badges** on token avatars.
+
+### What from those screenshots is NOT built, and why
+- **24H volume** — needs per-trade data (paid stream).
+- **Buys vs sells pressure bars** — same; requires counting individual
+  trades.
+- **Holder PnL / avg entry columns** — requires every holder's full
+  trade history. Not derivable from on-chain balances alone.
+- **Holder count** — `getTokenLargestAccounts` returns the top 20 only.
+  A true count needs `getProgramAccounts` (very heavy) or a paid
+  indexer.
+
+These are left out rather than approximated. On a tool whose job is
+flagging scams, a fabricated number is worse than a missing one.
