@@ -7,7 +7,7 @@
 <script src="https://unpkg.com/@solana/web3.js@1.95.3/lib/index.iife.min.js"></script>
 <style>
   :root {
-    --bg: #07090E; --surface: #10141D; --surface-2: #171D29; --line: #232A3A;
+    --bg: #060810; --surface: #0E121C; --surface-2: #161C29; --line: #232A3A;
     --text: #EDF1F8; --text-dim: #8B93A7; --text-faint: #565F73;
     --signal: #00E5A0; --danger: #FF4368; --amber: #FFB84D;
     --sol-a: #14F195; --sol-b: #9945FF;
@@ -16,164 +16,149 @@
     --disp: -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--mono); }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--mono); }
 
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.035) 1px, transparent 0);
-    background-size: 28px 28px;
-    pointer-events: none;
-    z-index: 0;
+  .app { display: flex; height: 100vh; overflow: hidden; }
+
+  /* ---------------- sidebar ---------------- */
+  .sidebar {
+    width: 340px; flex-shrink: 0;
+    border-right: 1px solid var(--line);
+    display: flex; flex-direction: column;
+    background: var(--surface);
   }
-
-  header {
-    position: sticky; top: 0; z-index: 20;
-    padding: 16px 22px;
-    background: rgba(7,9,14,0.85);
-    backdrop-filter: blur(14px);
-    border-bottom: 1px solid var(--line);
-    display: flex; flex-direction: column; gap: 14px;
+  .brand-row {
+    display: flex; align-items: center; gap: 9px;
+    padding: 16px 16px 12px;
   }
-  .head-row { display: flex; justify-content: space-between; align-items: center; }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand svg { width: 22px; height: 22px; }
-  .brand h1 { font-family: var(--disp); font-weight: 700; font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+  .brand-row svg { width: 20px; height: 20px; }
+  .brand-row h1 { font-family: var(--disp); font-weight: 700; font-size: 15px; margin: 0; letter-spacing: -0.01em; }
 
-  .chain-status { display: flex; gap: 14px; }
+  .chain-status { display: flex; gap: 8px; padding: 0 16px 12px; }
   .chip {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 10.5px; letter-spacing: 0.04em; font-weight: 600;
-    padding: 5px 10px 5px 8px; border-radius: 100px;
-    border: 1px solid var(--line); background: var(--surface);
+    display: flex; align-items: center; gap: 5px;
+    font-size: 9.5px; letter-spacing: 0.03em; font-weight: 600;
+    padding: 4px 8px 4px 6px; border-radius: 100px;
+    border: 1px solid var(--line); background: var(--surface-2);
   }
-  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); }
+  .chip .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-faint); }
   .chip.live .dot { background: var(--signal); box-shadow: 0 0 6px var(--signal); animation: blink 1.6s infinite; }
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
   .chip.sol { color: var(--sol-a); }
   .chip.rh { color: var(--rh); }
 
-  .search-row { display: flex; gap: 8px; }
   .search-box {
-    flex: 1;
-    background: var(--surface);
+    margin: 0 16px 10px;
+    background: var(--surface-2);
     border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 11px 14px;
+    border-radius: 9px;
+    padding: 9px 11px;
     color: var(--text);
     font-family: var(--mono);
-    font-size: 13px;
+    font-size: 12px;
     outline: none;
     transition: border-color .15s;
   }
   .search-box:focus { border-color: var(--sol-b); }
   .search-box::placeholder { color: var(--text-faint); }
 
-  .tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+  .tabs { display: flex; gap: 5px; overflow-x: auto; padding: 0 16px 10px; }
   .tab {
     flex-shrink: 0;
-    font-family: var(--disp); font-weight: 600; font-size: 12px;
-    padding: 7px 13px; border-radius: 100px;
-    border: 1px solid var(--line); background: var(--surface);
+    font-family: var(--disp); font-weight: 600; font-size: 10.5px;
+    padding: 5px 10px; border-radius: 100px;
+    border: 1px solid var(--line); background: var(--surface-2);
     color: var(--text-dim); cursor: pointer;
-    transition: all .15s;
-    white-space: nowrap;
+    transition: all .15s; white-space: nowrap;
   }
-  .tab:hover { color: var(--text); border-color: #3A4258; }
+  .tab:hover { color: var(--text); }
   .tab.active { background: var(--text); color: var(--bg); border-color: var(--text); }
 
-  main { position: relative; z-index: 1; padding: 18px; max-width: 1100px; margin: 0 auto; }
-
-  .lookup-card {
-    border: 1px dashed var(--sol-b);
-    background: linear-gradient(180deg, rgba(153,69,255,0.08), transparent);
-    border-radius: 14px;
-    padding: 18px;
-    margin-bottom: 16px;
-    font-size: 12.5px;
-    color: var(--text-dim);
-  }
-  .lookup-card b { color: var(--text); font-family: var(--disp); }
-  .lookup-links { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
-  .lookup-facts { margin-top: 10px; font-size: 11.5px; }
-  .lookup-facts div { padding: 3px 0; }
-  .lookup-facts b { font-family: var(--mono); }
-
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
-
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 16px;
-    animation: slidein .25s ease;
-    position: relative;
-    overflow: hidden;
-    transition: border-color .15s, transform .15s;
+  .token-list { flex: 1; overflow-y: auto; border-top: 1px solid var(--line); }
+  .token-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
     cursor: pointer;
+    transition: background .12s;
+    position: relative;
   }
-  .card:hover { border-color: #313A50; transform: translateY(-2px); }
-  .card::before {
-    content: '';
-    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  .token-row:hover { background: var(--surface-2); }
+  .token-row.selected { background: var(--surface-2); }
+  .token-row.selected::before {
+    content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
   }
-  .card.sol::before { background: linear-gradient(90deg, var(--sol-a), var(--sol-b)); }
-  .card.rh::before { background: var(--rh); }
-  @keyframes slidein { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
-
-  .card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
-  .sym { font-family: var(--disp); font-weight: 700; font-size: 16px; }
-  .chain-tag { font-size: 9.5px; letter-spacing: 0.05em; font-weight: 700; margin-top: 3px; }
-  .chain-tag.sol { color: var(--sol-a); }
-  .chain-tag.rh { color: var(--rh); }
-  .score { font-family: var(--disp); font-weight: 700; font-size: 24px; text-align: right; line-height: 1; }
-  .score-label { font-size: 9px; color: var(--text-faint); text-align: right; letter-spacing: 0.05em; margin-top: 2px; }
+  .token-row.selected.sol::before { background: linear-gradient(180deg, var(--sol-a), var(--sol-b)); }
+  .token-row.selected.rh::before { background: var(--rh); }
+  .row-main { flex: 1; min-width: 0; }
+  .row-sym { font-family: var(--disp); font-weight: 700; font-size: 13px; }
+  .row-sub { font-size: 9.5px; color: var(--text-faint); margin-top: 1px; }
+  .row-right { text-align: right; flex-shrink: 0; }
+  .row-score { font-family: var(--disp); font-weight: 700; font-size: 14px; }
+  .row-mcap { font-size: 9.5px; color: var(--text-faint); margin-top: 1px; }
   .good { color: var(--signal); } .warn { color: var(--amber); } .bad { color: var(--danger); }
 
-  .mcap-row {
-    display: flex; justify-content: space-between; align-items: baseline;
-    font-size: 11px; color: var(--text-dim);
-    margin-bottom: 10px; padding-bottom: 10px;
-    border-bottom: 1px solid var(--line);
+  .list-empty { padding: 40px 20px; text-align: center; color: var(--text-faint); font-size: 11.5px; line-height: 1.6; }
+
+  /* ---------------- main panel ---------------- */
+  .main { flex: 1; overflow-y: auto; background: var(--bg); }
+  .main-empty {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+    color: var(--text-faint); font-size: 13px; flex-direction: column; gap: 8px;
   }
-  .mcap-row .mcap-val { font-family: var(--disp); font-weight: 700; font-size: 14px; color: var(--text); }
-  .mcap-row .price-val { font-family: var(--mono); color: var(--text-faint); }
-  .mcap-tag { font-size: 8.5px; color: var(--text-faint); margin-left: 4px; }
+
+  .detail { max-width: 760px; margin: 0 auto; padding: 28px 24px 60px; }
+  .detail-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+  .detail-sym { font-family: var(--disp); font-weight: 700; font-size: 26px; letter-spacing: -0.01em; }
+  .detail-chain { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; margin-top: 4px; }
+  .detail-chain.sol { color: var(--sol-a); } .detail-chain.rh { color: var(--rh); }
+  .detail-score { text-align: right; }
+  .detail-score .num { font-family: var(--disp); font-weight: 700; font-size: 34px; line-height: 1; }
+  .detail-score .lbl { font-size: 9.5px; color: var(--text-faint); letter-spacing: 0.05em; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-bottom: 18px; }
+  .stat-cell { background: var(--surface); padding: 12px; }
+  .stat-cell .lbl { font-size: 9px; color: var(--text-faint); letter-spacing: 0.05em; margin-bottom: 4px; }
+  .stat-cell .val { font-family: var(--disp); font-weight: 700; font-size: 14px; }
+  @media (max-width: 620px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .chart-wrap {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    margin-bottom: 18px; background: var(--surface); min-height: 380px;
+    position: relative;
+  }
+  .chart-wrap iframe { width: 100%; height: 380px; border: none; display: block; }
+  .chart-fallback {
+    height: 380px; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px; color: var(--text-faint); font-size: 12px; padding: 20px; text-align: center;
+  }
+
+  .section { margin-bottom: 20px; }
+  .section h3 { font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); margin: 0 0 10px; font-weight: 600; }
+
+  .flag-list { display: flex; flex-direction: column; gap: 8px; }
+  .flag-item { font-size: 12.5px; padding: 10px 12px; border-radius: 8px; background: rgba(255,67,104,0.08); border: 1px solid rgba(255,67,104,0.25); }
+  .flag-item.ok { background: rgba(0,229,160,0.08); border-color: rgba(0,229,160,0.25); }
 
   .addr-row {
-    display: flex; align-items: center; gap: 6px;
-    font-size: 11px; color: var(--text-dim);
-    background: var(--surface-2);
-    border-radius: 7px;
-    padding: 6px 8px;
-    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface-2); border-radius: 8px; padding: 10px 12px;
+    font-size: 11.5px; word-break: break-all; margin-bottom: 10px;
   }
-  .addr-row span.full { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .copy-btn {
-    background: none; border: none; color: var(--text-dim);
+    background: none; color: var(--text-dim);
     font-family: var(--mono); font-size: 10.5px; cursor: pointer;
-    padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line);
-    white-space: nowrap;
+    padding: 3px 8px; border-radius: 5px; border: 1px solid var(--line);
+    white-space: nowrap; flex-shrink: 0;
   }
   .copy-btn:hover { color: var(--text); border-color: #3A4258; }
   .copy-btn.copied { color: var(--signal); border-color: var(--signal); }
 
-  .flags { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-height: 18px; }
-  .flag { font-size: 11px; color: var(--danger); display: flex; gap: 5px; }
-  .flag.ok { color: var(--signal); }
-
-  .card-actions { display: flex; gap: 8px; }
+  .action-row { display: flex; gap: 8px; margin-bottom: 8px; }
   .action-btn {
-    flex: 1;
-    text-align: center;
-    text-decoration: none;
-    font-family: var(--disp);
-    font-weight: 600;
-    font-size: 12px;
-    padding: 9px;
-    border-radius: 8px;
-    border: 1px solid var(--line);
-    color: var(--text);
+    flex: 1; text-align: center; text-decoration: none;
+    font-family: var(--disp); font-weight: 600; font-size: 12.5px;
+    padding: 10px; border-radius: 8px; border: 1px solid var(--line); color: var(--text);
     transition: background .15s, border-color .15s;
   }
   .action-btn:hover { background: var(--surface-2); }
@@ -182,112 +167,22 @@
   .action-btn.primary.rh { border-color: rgba(0,200,5,0.35); color: var(--rh); }
   .action-btn.primary.rh:hover { background: rgba(0,200,5,0.08); }
 
-  .meta-row { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--text-faint); margin-top: 10px; }
-
-  .empty { padding: 70px 20px; text-align: center; color: var(--text-dim); font-size: 13px; }
-
-  .toast {
-    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
-    background: var(--surface-2); border: 1px solid var(--signal); color: var(--signal);
-    padding: 10px 18px; border-radius: 100px; font-size: 12px;
-    opacity: 0; transition: opacity .2s, transform .2s;
-    z-index: 50; pointer-events: none;
-  }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-  /* ---- detail modal ---- */
-  .modal-backdrop {
-    position: fixed; inset: 0; z-index: 40;
-    background: rgba(4,5,9,0.7);
-    backdrop-filter: blur(4px);
-    display: none;
-    align-items: flex-start; justify-content: center;
-    overflow-y: auto;
-    padding: 40px 16px;
-  }
-  .modal-backdrop.show { display: flex; }
-  .modal {
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    max-width: 520px; width: 100%;
-    padding: 24px;
-    position: relative;
-    animation: modalin .2s ease;
-  }
-  @keyframes modalin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-  .modal-close {
-    position: absolute; top: 16px; right: 16px;
-    background: var(--surface-2); border: 1px solid var(--line);
-    color: var(--text-dim); width: 28px; height: 28px; border-radius: 8px;
-    cursor: pointer; font-size: 14px;
-  }
-  .modal-close:hover { color: var(--text); }
-  .modal h2 { font-family: var(--disp); font-size: 20px; margin: 0 0 2px; }
-  .modal .modal-chain { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 18px; }
-  .modal-section { margin-bottom: 18px; }
-  .modal-section h3 {
-    font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
-    color: var(--text-faint); margin: 0 0 8px; font-weight: 600;
-  }
-  .modal-flag-list { display: flex; flex-direction: column; gap: 8px; }
-  .modal-flag {
-    font-size: 12.5px; padding: 10px 12px; border-radius: 8px;
-    background: rgba(255,67,104,0.08); border: 1px solid rgba(255,67,104,0.25);
-    color: var(--text);
-  }
-  .modal-flag.ok { background: rgba(0,229,160,0.08); border-color: rgba(0,229,160,0.25); }
-  .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .modal-stat { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; }
-  .modal-stat .label { font-size: 9.5px; color: var(--text-faint); letter-spacing: 0.04em; margin-bottom: 4px; }
-  .modal-stat .val { font-family: var(--disp); font-weight: 700; font-size: 14px; }
-  .modal-addr {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--surface-2); border-radius: 8px; padding: 10px 12px;
-    font-size: 11.5px; word-break: break-all;
-  }
-
-  /* ---- trade panel ---- */
-  .trade-panel {
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 14px;
-    background: var(--surface-2);
-  }
+  .trade-panel { border: 1px solid var(--line); border-radius: 12px; padding: 14px; background: var(--surface); }
   .trade-warning {
     font-size: 10.5px; color: var(--amber);
     background: rgba(255,184,77,0.08); border: 1px solid rgba(255,184,77,0.25);
     border-radius: 7px; padding: 8px 10px; margin-bottom: 12px; line-height: 1.5;
   }
-  .connect-btn {
-    width: 100%; padding: 10px; border-radius: 8px;
-    background: var(--sol-a); color: #04140D; border: none;
-    font-family: var(--disp); font-weight: 700; font-size: 13px; cursor: pointer;
-  }
+  .connect-btn { width: 100%; padding: 11px; border-radius: 8px; background: var(--sol-a); color: #04140D; border: none; font-family: var(--disp); font-weight: 700; font-size: 13px; cursor: pointer; }
   .connect-btn:hover { opacity: 0.9; }
-  .wallet-pill {
-    font-size: 11px; color: var(--sol-a); font-family: var(--mono);
-    display: flex; justify-content: space-between; align-items: center;
-    margin-bottom: 12px;
-  }
+  .wallet-pill { font-size: 11px; color: var(--sol-a); font-family: var(--mono); display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .side-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
-  .side-btn {
-    flex: 1; padding: 8px; border-radius: 7px; border: 1px solid var(--line);
-    background: var(--surface); color: var(--text-dim);
-    font-family: var(--disp); font-weight: 700; font-size: 12px; cursor: pointer;
-  }
+  .side-btn { flex: 1; padding: 8px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-dim); font-family: var(--disp); font-weight: 700; font-size: 12px; cursor: pointer; }
   .side-btn.active.buy { background: rgba(0,229,160,0.12); border-color: var(--signal); color: var(--signal); }
   .side-btn.active.sell { background: rgba(255,67,104,0.12); border-color: var(--danger); color: var(--danger); }
-  .amount-input {
-    width: 100%; padding: 10px; border-radius: 7px; border: 1px solid var(--line);
-    background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 14px;
-    margin-bottom: 10px; outline: none;
-  }
+  .amount-input { width: 100%; padding: 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-family: var(--mono); font-size: 14px; margin-bottom: 10px; outline: none; }
   .amount-input:focus { border-color: var(--sol-b); }
-  .execute-btn {
-    width: 100%; padding: 11px; border-radius: 8px; border: none;
-    font-family: var(--disp); font-weight: 700; font-size: 13px; cursor: pointer;
-  }
+  .execute-btn { width: 100%; padding: 11px; border-radius: 8px; border: none; font-family: var(--disp); font-weight: 700; font-size: 13px; cursor: pointer; }
   .execute-btn.buy { background: var(--signal); color: #04140D; }
   .execute-btn.sell { background: var(--danger); color: #1A0509; }
   .execute-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -295,13 +190,27 @@
   .trade-status.pending { background: rgba(153,69,255,0.1); color: #C9A8FF; }
   .trade-status.success { background: rgba(0,229,160,0.1); color: var(--signal); }
   .trade-status.error { background: rgba(255,67,104,0.1); color: var(--danger); }
+
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: var(--surface-2); border: 1px solid var(--signal); color: var(--signal);
+    padding: 10px 18px; border-radius: 100px; font-size: 12px;
+    opacity: 0; transition: opacity .2s, transform .2s; z-index: 50; pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  @media (max-width: 820px) {
+    .app { flex-direction: column; }
+    .sidebar { width: 100%; height: 46vh; border-right: none; border-bottom: 1px solid var(--line); }
+    .main { height: 54vh; }
+  }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="head-row">
-    <div class="brand">
+<div class="app">
+  <div class="sidebar">
+    <div class="brand-row">
       <svg viewBox="0 0 24 24" fill="none">
         <path d="M12 2L4 5.5V11C4 16.2 7.4 20.9 12 22C16.6 20.9 20 16.2 20 11V5.5L12 2Z" stroke="#00E5A0" stroke-width="1.6" fill="rgba(0,229,160,0.08)"/>
         <path d="M8.5 12L11 14.5L16 9" stroke="#00E5A0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -312,47 +221,46 @@
       <div class="chip sol" id="solChip"><span class="dot"></span>SOLANA</div>
       <div class="chip rh" id="rhChip"><span class="dot"></span>ROBINHOOD</div>
     </div>
+    <input class="search-box" id="search" placeholder="Search or paste an address…" />
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-filter="all">All</div>
+      <div class="tab" data-filter="solana">Pump.fun</div>
+      <div class="tab" data-filter="robinhood">Robinhood</div>
+      <div class="tab" data-filter="flagged">Flagged</div>
+      <div class="tab" data-filter="clean">Clean</div>
+    </div>
+    <div class="token-list" id="tokenList"></div>
   </div>
-  <div class="search-row">
-    <input class="search-box" id="search" placeholder="Search by symbol, or paste a contract address / mint…" />
-  </div>
-  <div class="tabs" id="tabs">
-    <div class="tab active" data-filter="all">All</div>
-    <div class="tab" data-filter="solana">Pump.fun · Solana</div>
-    <div class="tab" data-filter="robinhood">Robinhood Chain</div>
-    <div class="tab" data-filter="flagged">Flagged only</div>
-    <div class="tab" data-filter="clean">Clean only</div>
-  </div>
-</header>
 
-<main>
-  <div id="lookupResult"></div>
-  <div class="empty" id="emptyMsg">Waiting for the first token to launch…</div>
-  <div class="grid" id="cards"></div>
-</main>
+  <div class="main" id="main">
+    <div class="main-empty" id="mainEmpty">
+      <div>Waiting for the first token to launch…</div>
+      <div style="font-size:11px;">Select any token on the left once one appears</div>
+    </div>
+    <div class="detail" id="detail" style="display:none;"></div>
+  </div>
+</div>
 
 <div class="toast" id="toast">Copied</div>
 
-<div class="modal-backdrop" id="modalBackdrop">
-  <div class="modal" id="modalContent"></div>
-</div>
-
 <script>
-  const cardsEl = document.getElementById('cards');
-  const emptyMsg = document.getElementById('emptyMsg');
+  const tokenListEl = document.getElementById('tokenList');
+  const listEmptyMsg = () => `<div class="list-empty">Nothing yet — Sentry is watching, this fills in as tokens launch.</div>`;
   const searchEl = document.getElementById('search');
-  const lookupResult = document.getElementById('lookupResult');
   const solChip = document.getElementById('solChip');
   const rhChip = document.getElementById('rhChip');
   const toast = document.getElementById('toast');
   const tabsEl = document.getElementById('tabs');
-  const modalBackdrop = document.getElementById('modalBackdrop');
-  const modalContent = document.getElementById('modalContent');
+  const mainEmpty = document.getElementById('mainEmpty');
+  const detailEl = document.getElementById('detail');
 
-  const tokensById = new Map(); // id -> token data
-  const cardEls = new Map();    // id -> DOM node
+  const tokensById = new Map();
+  const rowEls = new Map();
   let solUsd = null;
   let activeFilter = 'all';
+  let selectedId = null;
+  let walletPubkey = null;
+  let tradeSide = 'buy';
 
   function scoreClass(s) { return s >= 70 ? 'good' : s >= 40 ? 'warn' : 'bad'; }
   function short(addr) { return addr ? addr.slice(0, 5) + '…' + addr.slice(-5) : '—'; }
@@ -363,13 +271,11 @@
     if (n >= 1_000) return '$' + (n / 1_000).toFixed(1) + 'K';
     return '$' + n.toFixed(0);
   }
-
   function formatPrice(n) {
     if (n === null || n === undefined) return null;
     if (n < 0.01) return '$' + n.toFixed(8).replace(/0+$/, '').replace(/\.$/, '');
     return '$' + n.toFixed(4);
   }
-
   function formatAge(ms) {
     const s = Math.max(0, Math.floor(ms / 1000));
     if (s < 60) return s + 's';
@@ -399,9 +305,7 @@
 
   function tradeLinks(token) {
     if (token.chain === 'robinhood') {
-      return [
-        { label: 'View on Explorer ↗', url: `https://robinhoodchain.blockscout.com/address/${token.id}`, cls: 'primary rh' },
-      ];
+      return [{ label: 'View on Explorer ↗', url: `https://robinhoodchain.blockscout.com/address/${token.id}`, cls: 'primary rh' }];
     }
     return [
       { label: 'Trade on Pump.fun ↗', url: `https://pump.fun/coin/${token.id}`, cls: 'primary sol' },
@@ -418,123 +322,136 @@
           : (token.chain === 'robinhood' ? 'pending' : '—'));
     const priceDisplay = priceUsd !== null ? formatPrice(priceUsd)
       : (token.priceSol !== null && token.priceSol !== undefined ? token.priceSol.toFixed(8) + ' SOL' : '—');
-    const initialOnly = token.marketCapIsInitialOnly === true;
-    return { mcapDisplay, priceDisplay, initialOnly };
+    return { mcapDisplay, priceDisplay, initialOnly: token.marketCapIsInitialOnly === true };
   }
 
-  function renderCard(token) {
+  // ---------------- sidebar rows ----------------
+  function renderRow(token) {
     const chainCls = token.chain === 'robinhood' ? 'rh' : 'sol';
-    const chainLabel = token.chain === 'robinhood' ? 'ROBINHOOD CHAIN' : 'PUMP.FUN · SOLANA';
-    const links = tradeLinks(token);
-    const { mcapDisplay, priceDisplay, initialOnly } = mcapPieces(token);
-
-    const div = document.createElement('div');
-    div.className = `card ${chainCls}`;
-    div.dataset.symbol = (token.symbol || '').toLowerCase();
-    div.dataset.id = token.id.toLowerCase();
-    div.dataset.chain = token.chain;
-    div.dataset.flagged = (token.flags && token.flags.length) ? '1' : '0';
-
-    div.innerHTML = `
-      <div class="card-top">
-        <div>
-          <div class="sym">${token.symbol || '???'}</div>
-          <div class="chain-tag ${chainCls}">${chainLabel}</div>
-        </div>
-        <div>
-          <div class="score ${scoreClass(token.score)}">${token.score}</div>
-          <div class="score-label">TRUST SCORE</div>
-        </div>
+    const { mcapDisplay } = mcapPieces(token);
+    const row = document.createElement('div');
+    row.className = `token-row ${chainCls}` + (token.id === selectedId ? ' selected' : '');
+    row.dataset.symbol = (token.symbol || '').toLowerCase();
+    row.dataset.id = token.id.toLowerCase();
+    row.dataset.chain = token.chain;
+    row.dataset.flagged = (token.flags && token.flags.length) ? '1' : '0';
+    row.innerHTML = `
+      <div class="row-main">
+        <div class="row-sym">${token.symbol || '???'}</div>
+        <div class="row-sub">${chainCls === 'sol' ? 'Pump.fun' : 'Robinhood'} · ${short(token.id)}</div>
       </div>
-      <div class="mcap-row">
-        <div><span class="mcap-val">${mcapDisplay}</span> mcap${initialOnly ? '<span class="mcap-tag">at launch</span>' : ''}</div>
-        <div class="price-val">${priceDisplay}</div>
+      <div class="row-right">
+        <div class="row-score ${scoreClass(token.score)}">${token.score}</div>
+        <div class="row-mcap">${mcapDisplay}</div>
       </div>
-      <div class="addr-row">
-        <span class="full">${token.id}</span>
-        <button class="copy-btn" data-addr="${token.id}">Copy</button>
-      </div>
-      <div class="flags">
-        ${(token.flags && token.flags.length)
-          ? token.flags.slice(0, 2).map(f => `<div class="flag">⚠ ${f}</div>`).join('') + (token.flags.length > 2 ? `<div class="flag">+${token.flags.length - 2} more — tap card</div>` : '')
-          : `<div class="flag ok">✓ No red flags detected yet</div>`}
-      </div>
-      <div class="card-actions">
-        ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join('')}
-      </div>
-      <div class="meta-row"><span class="age-val" data-created="${token.createdAt}">0s old</span><span>${token.creator ? short(token.creator) + ' creator' : ''}</span></div>
     `;
-
-    div.querySelector('.copy-btn').addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      copyText(token.id, e.target);
-    });
-
-    div.querySelectorAll('.action-btn').forEach(a => a.addEventListener('click', (e) => e.stopPropagation()));
-
-    div.addEventListener('click', () => openModal(token));
-
-    return div;
+    row.addEventListener('click', () => selectToken(token.id));
+    return row;
   }
 
-  // ---- detail modal ----
-  function openModal(token) {
+  function upsertToken(token) {
+    tokensById.set(token.id, token);
+    const existing = rowEls.get(token.id);
+    const fresh = renderRow(token);
+    if (existing) existing.replaceWith(fresh); else tokenListEl.prepend(fresh);
+    rowEls.set(token.id, fresh);
+
+    const emptyNode = tokenListEl.querySelector('.list-empty');
+    if (emptyNode) emptyNode.remove();
+
+    if (!selectedId) selectToken(token.id);
+    if (token.id === selectedId) renderDetail(token);
+
+    applyFilter();
+    trimList();
+  }
+
+  function trimList() {
+    while (tokenListEl.children.length > 150) {
+      const last = tokenListEl.lastElementChild;
+      if (!last || last.classList.contains('list-empty')) break;
+      const id = last.dataset.id;
+      rowEls.delete(id);
+      tokensById.delete(id);
+      tokenListEl.removeChild(last);
+    }
+  }
+
+  function selectToken(id) {
+    selectedId = id;
+    document.querySelectorAll('.token-row').forEach(r => r.classList.toggle('selected', r.dataset.id === id.toLowerCase()));
+    const token = tokensById.get(id);
+    if (token) renderDetail(token);
+  }
+
+  // ---------------- main detail panel ----------------
+  function chartEmbedUrl(token) {
+    if (token.chain !== 'solana') return null;
+    return `https://dexscreener.com/solana/${token.id}?embed=1&theme=dark&trades=0&info=0`;
+  }
+
+  function renderDetail(token) {
+    mainEmpty.style.display = 'none';
+    detailEl.style.display = 'block';
+
     const chainCls = token.chain === 'robinhood' ? 'rh' : 'sol';
     const chainLabel = token.chain === 'robinhood' ? 'ROBINHOOD CHAIN' : 'PUMP.FUN · SOLANA';
     const { mcapDisplay, priceDisplay, initialOnly } = mcapPieces(token);
     const links = tradeLinks(token);
-    const createdDate = new Date(token.createdAt);
+    const chartUrl = chartEmbedUrl(token);
 
-    modalContent.innerHTML = `
-      <button class="modal-close" id="modalCloseBtn">✕</button>
-      <h2>${token.symbol || '???'} ${token.name ? '— ' + token.name : ''}</h2>
-      <div class="modal-chain chain-tag ${chainCls}">${chainLabel}</div>
+    detailEl.innerHTML = `
+      <div class="detail-head">
+        <div>
+          <div class="detail-sym">${token.symbol || '???'} ${token.name ? `<span style="font-size:15px;color:var(--text-dim);font-weight:400;">${token.name}</span>` : ''}</div>
+          <div class="detail-chain ${chainCls}">${chainLabel}</div>
+        </div>
+        <div class="detail-score">
+          <div class="num ${scoreClass(token.score)}">${token.score}</div>
+          <div class="lbl">TRUST SCORE</div>
+        </div>
+      </div>
 
-      <div class="modal-section">
-        <h3>Trust score: ${token.score} / 100</h3>
-        <div class="modal-flag-list">
+      <div class="stat-grid">
+        <div class="stat-cell"><div class="lbl">MARKET CAP${initialOnly ? ' (LAUNCH)' : ''}</div><div class="val">${mcapDisplay}</div></div>
+        <div class="stat-cell"><div class="lbl">PRICE</div><div class="val" style="font-size:11.5px;">${priceDisplay}</div></div>
+        <div class="stat-cell"><div class="lbl">AGE</div><div class="val age-val" data-created="${token.createdAt}">0s</div></div>
+        <div class="stat-cell"><div class="lbl">CREATOR</div><div class="val" style="font-size:11px;">${short(token.creator)}</div></div>
+      </div>
+
+      <div class="chart-wrap">
+        ${chartUrl
+          ? `<iframe src="${chartUrl}" loading="lazy"></iframe>`
+          : `<div class="chart-fallback">No embedded chart for Robinhood Chain yet — use the explorer link below to inspect this token directly.</div>`}
+      </div>
+
+      <div class="section">
+        <h3>Why this score</h3>
+        <div class="flag-list">
           ${(token.flags && token.flags.length)
-            ? token.flags.map(f => `<div class="modal-flag">⚠ ${f}</div>`).join('')
-            : `<div class="modal-flag ok">✓ Sentry hasn't detected any red flags for this token yet. That's not a guarantee it's safe — it means nothing suspicious has shown up in what Sentry can currently observe.</div>`}
+            ? token.flags.map(f => `<div class="flag-item">⚠ ${f}</div>`).join('')
+            : `<div class="flag-item ok">✓ No red flags detected. Not a guarantee of safety — just nothing suspicious has shown up in what Sentry can currently observe.</div>`}
         </div>
       </div>
 
-      <div class="modal-section">
-        <h3>Market data</h3>
-        <div class="modal-grid">
-          <div class="modal-stat"><div class="label">MARKET CAP${initialOnly ? ' (AT LAUNCH)' : ''}</div><div class="val">${mcapDisplay}</div></div>
-          <div class="modal-stat"><div class="label">PRICE</div><div class="val">${priceDisplay}</div></div>
+      <div class="section">
+        <h3>Contract</h3>
+        <div class="addr-row"><span style="flex:1;">${token.id}</span><button class="copy-btn" id="detailCopyBtn">Copy</button></div>
+        <div class="action-row">
+          ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join('')}
         </div>
-        ${initialOnly ? `<div style="font-size:11px;color:var(--text-faint);margin-top:8px;">This is the starting market cap from launch. Live updates after that require Sentry's operator to enable a paid trade-data subscription — ask if that's been turned on yet.</div>` : ''}
-      </div>
-
-      <div class="modal-section">
-        <h3>Details</h3>
-        <div class="modal-grid" style="margin-bottom:10px;">
-          <div class="modal-stat"><div class="label">LAUNCHED</div><div class="val" style="font-size:11px;">${createdDate.toLocaleTimeString()}</div></div>
-          <div class="modal-stat"><div class="label">CREATOR</div><div class="val" style="font-size:11px;">${short(token.creator)}</div></div>
-        </div>
-        <div class="modal-addr">
-          <span style="flex:1;">${token.id}</span>
-          <button class="copy-btn" id="modalCopyBtn">Copy</button>
-        </div>
-      </div>
-
-      <div class="card-actions">
-        ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join('')}
       </div>
 
       ${token.chain === 'solana' ? `
-        <div class="modal-section">
+        <div class="section">
           <h3>Trade (beta)</h3>
-          <div class="trade-panel" id="tradePanel">
-            <div class="trade-warning">⚠ Beta. Test with a small amount first. This has not been end-to-end tested against mainnet from this environment. Sentry never sees your private key — your wallet signs every transaction.</div>
+          <div class="trade-panel">
+            <div class="trade-warning">⚠ Beta — test with a small amount first. Sentry never sees your private key; your wallet signs every transaction.</div>
             <div id="walletArea"></div>
           </div>
         </div>
       ` : `
-        <div class="modal-section">
+        <div class="section">
           <h3>Trade</h3>
           <div class="trade-panel">
             <div style="font-size:11.5px;color:var(--text-dim);">In-app trading for Robinhood Chain isn't wired up yet — use the explorer link above for now.</div>
@@ -543,25 +460,98 @@
       `}
     `;
 
-    modalContent.querySelector('#modalCloseBtn').addEventListener('click', closeModal);
-    modalContent.querySelector('#modalCopyBtn').addEventListener('click', (e) => copyText(token.id, e.target));
+    detailEl.querySelector('#detailCopyBtn').addEventListener('click', (e) => copyText(token.id, e.target));
     if (token.chain === 'solana') renderWalletArea(token);
-    modalBackdrop.classList.add('show');
   }
 
-  function closeModal() {
-    modalBackdrop.classList.remove('show');
+  // ---------------- category tabs + search ----------------
+  tabsEl.addEventListener('click', (e) => {
+    const tab = e.target.closest('.tab');
+    if (!tab) return;
+    tabsEl.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    activeFilter = tab.dataset.filter;
+    applyFilter();
+  });
+
+  function passesTab(row) {
+    switch (activeFilter) {
+      case 'solana': return row.dataset.chain === 'solana';
+      case 'robinhood': return row.dataset.chain === 'robinhood';
+      case 'flagged': return row.dataset.flagged === '1';
+      case 'clean': return row.dataset.flagged === '0';
+      default: return true;
+    }
   }
-  modalBackdrop.addEventListener('click', (e) => { if (e.target === modalBackdrop) closeModal(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 
-  // ---- wallet connect + trade (Solana / Pump.fun only — non-custodial) ----
-  // Sentry never touches a private key. Phantom (window.solana) signs
-  // every transaction locally in the extension; this page only ever
-  // sees the resulting signed bytes it hands back.
-  let walletPubkey = null;
-  let tradeSide = 'buy';
+  function detectChainFromAddress(addr) {
+    if (/^0x[a-fA-F0-9]{40}$/.test(addr)) return 'robinhood';
+    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)) return 'solana';
+    return null;
+  }
 
+  let lookupDebounce = null;
+
+  function applyFilter() {
+    const q = searchEl.value.trim().toLowerCase();
+    let anyRow = false;
+    [...tokenListEl.children].forEach(r => {
+      if (!r.dataset) return; // skip the empty-state div
+      const searchOk = !q || r.dataset.symbol.includes(q) || r.dataset.id.includes(q);
+      const visible = searchOk && passesTab(r);
+      r.style.display = visible ? '' : 'none';
+      if (visible) anyRow = true;
+    });
+
+    if (!anyRow && q.length >= 20) {
+      clearTimeout(lookupDebounce);
+      lookupDebounce = setTimeout(() => runServerLookup(searchEl.value.trim()), 400);
+    }
+  }
+
+  async function runServerLookup(raw) {
+    const chain = detectChainFromAddress(raw);
+    if (!chain) return;
+    try {
+      const res = await fetch('/api/lookup?address=' + encodeURIComponent(raw));
+      const data = await res.json();
+      if (data.found && data.source === 'live-history') {
+        upsertToken(data.token);
+        selectToken(data.token.id);
+        return;
+      }
+      if (data.found && data.source === 'on-chain-direct') {
+        mainEmpty.style.display = 'none';
+        detailEl.style.display = 'block';
+        const links = tradeLinks({ id: raw, chain: data.chain });
+        let facts = '';
+        if (data.chain === 'solana') {
+          facts = `<div style="font-size:11.5px;line-height:1.8;"><div><b>Supply:</b> ${data.supply ?? '—'}</div><div><b>Decimals:</b> ${data.decimals ?? '—'}</div><div><b>Mint authority:</b> ${data.mintAuthority ? short(data.mintAuthority) : 'renounced / none'}</div></div>`;
+        } else if (data.name || data.symbol) {
+          facts = `<div style="font-size:12.5px;"><b>${data.symbol || '?'}</b> — ${data.name || 'unknown name'}</div>`;
+        }
+        detailEl.innerHTML = `
+          <div class="section">
+            <h3>Confirmed on-chain — not in Sentry's live history</h3>
+            <div style="font-size:12.5px;color:var(--text-dim);margin-bottom:12px;">Launched before Sentry started watching, or on a launchpad it doesn't track yet — so no score or flags, just what's verifiable directly from the chain.</div>
+            ${facts}
+            <div class="action-row" style="margin-top:14px;">
+              ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener">${l.label}</a>`).join('')}
+            </div>
+          </div>`;
+        return;
+      }
+      mainEmpty.style.display = 'none';
+      detailEl.style.display = 'block';
+      detailEl.innerHTML = `<div class="section"><h3>Nothing found</h3><div style="font-size:12.5px;color:var(--text-dim);">${data.reason || "That address doesn't resolve to a token Sentry can verify."}</div></div>`;
+    } catch {
+      showToast('Lookup failed — try again');
+    }
+  }
+
+  searchEl.addEventListener('input', applyFilter);
+
+  // ---------------- wallet connect + trade (Solana only, non-custodial) ----------------
   function base64ToBytes(b64) {
     const binary = atob(b64);
     const bytes = new Uint8Array(binary.length);
@@ -603,12 +593,10 @@
         <button class="side-btn buy ${tradeSide === 'buy' ? 'active buy' : ''}" id="buyToggle">Buy</button>
         <button class="side-btn sell ${tradeSide === 'sell' ? 'active sell' : ''}" id="sellToggle">Sell</button>
       </div>
-      <input class="amount-input" id="tradeAmount" type="number" step="any" min="0"
-        placeholder="${tradeSide === 'buy' ? 'Amount in SOL' : 'Amount of tokens'}" />
+      <input class="amount-input" id="tradeAmount" type="number" step="any" min="0" placeholder="${tradeSide === 'buy' ? 'Amount in SOL' : 'Amount of tokens'}" />
       <button class="execute-btn ${tradeSide}" id="executeBtn">${tradeSide === 'buy' ? 'Buy' : 'Sell'} ${token.symbol || ''}</button>
       <div id="tradeStatusArea"></div>
     `;
-
     area.querySelector('#buyToggle').addEventListener('click', () => { tradeSide = 'buy'; renderWalletArea(token); });
     area.querySelector('#sellToggle').addEventListener('click', () => { tradeSide = 'sell'; renderWalletArea(token); });
     area.querySelector('#executeBtn').addEventListener('click', () => executeTrade(token));
@@ -623,10 +611,7 @@
   async function executeTrade(token) {
     const amountInput = document.getElementById('tradeAmount');
     const amount = parseFloat(amountInput.value);
-    if (!amount || amount <= 0) {
-      setTradeStatus('Enter a valid amount first.', 'error');
-      return;
-    }
+    if (!amount || amount <= 0) { setTradeStatus('Enter a valid amount first.', 'error'); return; }
 
     const executeBtn = document.getElementById('executeBtn');
     executeBtn.disabled = true;
@@ -637,29 +622,19 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          publicKey: walletPubkey,
-          action: tradeSide,
-          mint: token.id,
-          amount,
-          denominatedInSol: tradeSide === 'buy',
-          slippage: 10,
+          publicKey: walletPubkey, action: tradeSide, mint: token.id, amount,
+          denominatedInSol: tradeSide === 'buy', slippage: 10,
         }),
       });
       const buildData = await buildRes.json();
-      if (!buildRes.ok || !buildData.transaction) {
-        throw new Error(buildData.error || 'Failed to build transaction');
-      }
+      if (!buildRes.ok || !buildData.transaction) throw new Error(buildData.error || 'Failed to build transaction');
 
       setTradeStatus('Confirm the transaction in Phantom…', 'pending');
       const txBytes = base64ToBytes(buildData.transaction);
       const tx = solanaWeb3.VersionedTransaction.deserialize(txBytes);
-
       const { signature } = await window.solana.signAndSendTransaction(tx);
 
-      setTradeStatus(
-        `Sent. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">View on Solscan ↗</a>`,
-        'success'
-      );
+      setTradeStatus(`Sent. <a href="https://solscan.io/tx/${signature}" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline;">View on Solscan ↗</a>`, 'success');
     } catch (err) {
       setTradeStatus('Failed: ' + (err.message || 'unknown error'), 'error');
     } finally {
@@ -667,148 +642,23 @@
     }
   }
 
-  function upsertToken(token) {
-    emptyMsg.style.display = 'none';
-    tokensById.set(token.id, token);
-    const existing = cardEls.get(token.id);
-    const fresh = renderCard(token);
-    if (existing) {
-      existing.replaceWith(fresh);
-    } else {
-      cardsEl.prepend(fresh);
-    }
-    cardEls.set(token.id, fresh);
-    applyFilter();
-    trimGrid();
-  }
-
-  function trimGrid() {
-    while (cardsEl.children.length > 150) {
-      const last = cardsEl.lastElementChild;
-      const id = last.dataset.id;
-      cardEls.delete(id);
-      tokensById.delete(id);
-      cardsEl.removeChild(last);
-    }
-  }
-
-  // ---- category tabs ----
-  tabsEl.addEventListener('click', (e) => {
-    const tab = e.target.closest('.tab');
-    if (!tab) return;
-    tabsEl.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    activeFilter = tab.dataset.filter;
-    applyFilter();
-  });
-
-  function passesTab(card) {
-    switch (activeFilter) {
-      case 'solana': return card.dataset.chain === 'solana';
-      case 'robinhood': return card.dataset.chain === 'robinhood';
-      case 'flagged': return card.dataset.flagged === '1';
-      case 'clean': return card.dataset.flagged === '0';
-      default: return true;
-    }
-  }
-
-  // ---- search / paste-to-find ----
-  function detectChainFromAddress(addr) {
-    if (/^0x[a-fA-F0-9]{40}$/.test(addr)) return 'robinhood';
-    if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(addr)) return 'solana';
-    return null;
-  }
-
-  let lookupDebounce = null;
-
-  function applyFilter() {
-    const q = searchEl.value.trim().toLowerCase();
-    lookupResult.innerHTML = '';
-
-    let anyMatch = false;
-    [...cardsEl.children].forEach(c => {
-      const searchOk = !q || c.dataset.symbol.includes(q) || c.dataset.id.includes(q);
-      const tabOk = passesTab(c);
-      const visible = searchOk && tabOk;
-      c.style.display = visible ? '' : 'none';
-      if (searchOk) anyMatch = true;
-    });
-
-    if (!anyMatch && q.length >= 20) {
-      clearTimeout(lookupDebounce);
-      lookupDebounce = setTimeout(() => runServerLookup(searchEl.value.trim()), 400);
-    }
-  }
-
-  async function runServerLookup(raw) {
-    const chain = detectChainFromAddress(raw);
-    if (!chain) return;
-
-    lookupResult.innerHTML = `<div class="lookup-card">Checking the chain directly for this address…</div>`;
-
-    try {
-      const res = await fetch('/api/lookup?address=' + encodeURIComponent(raw));
-      const data = await res.json();
-
-      if (data.found && data.source === 'live-history') {
-        // Sentry actually scanned this one live — show it like a normal result.
-        lookupResult.innerHTML = '';
-        upsertToken(data.token);
-        applyFilter();
-        return;
-      }
-
-      if (data.found && data.source === 'on-chain-direct') {
-        const links = tradeLinks({ id: raw, chain: data.chain });
-        let facts = '';
-        if (data.chain === 'solana') {
-          facts = `
-            <div class="lookup-facts">
-              <div><b>Supply:</b> ${data.supply ?? '—'}</div>
-              <div><b>Decimals:</b> ${data.decimals ?? '—'}</div>
-              <div><b>Mint authority:</b> ${data.mintAuthority ? short(data.mintAuthority) : 'renounced / none'}</div>
-            </div>`;
-        } else if (data.name || data.symbol) {
-          facts = `<div class="lookup-facts"><div><b>${data.symbol || '?'}</b> — ${data.name || 'unknown name'}</div></div>`;
-        }
-        lookupResult.innerHTML = `
-          <div class="lookup-card">
-            <b>Confirmed on-chain, but not seen in Sentry's live feed.</b> This means it launched before Sentry started watching (or on a launchpad Sentry doesn't track yet), so there's no score or flag history — but here's what's verifiable directly from the chain right now.
-            ${facts}
-            <div class="lookup-links">
-              ${links.map(l => `<a class="action-btn ${l.cls}" href="${l.url}" target="_blank" rel="noopener" style="flex:none;padding:9px 16px;">${l.label}</a>`).join('')}
-            </div>
-          </div>`;
-        return;
-      }
-
-      lookupResult.innerHTML = `
-        <div class="lookup-card">
-          <b>Nothing found.</b> ${data.reason || "That address doesn't resolve to a token Sentry can verify."}
-        </div>`;
-    } catch (err) {
-      lookupResult.innerHTML = `<div class="lookup-card"><b>Lookup failed.</b> Could not reach the server — try again in a moment.</div>`;
-    }
-  }
-
-  searchEl.addEventListener('input', applyFilter);
-
-  // ---- websocket ----
+  // ---------------- websocket ----------------
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(`${proto}://${location.host}/live`);
 
     ws.onmessage = (msg) => {
       const data = JSON.parse(msg.data);
-      if (data.type === 'snapshot') data.tokens.forEach(upsertToken);
+      if (data.type === 'snapshot') {
+        if (data.tokens.length === 0) tokenListEl.innerHTML = listEmptyMsg();
+        data.tokens.forEach(upsertToken);
+      }
       if (data.type === 'token' || data.type === 'update') upsertToken(data.token);
       if (data.type === 'feedStatus') {
         const chip = data.chain === 'robinhood' ? rhChip : solChip;
         chip.classList.toggle('live', data.status === 'connected');
       }
-      if (data.type === 'solPrice') {
-        solUsd = data.usd;
-      }
+      if (data.type === 'solPrice') solUsd = data.usd;
     };
 
     ws.onclose = () => {
@@ -817,12 +667,13 @@
       setTimeout(connect, 2000);
     };
   }
+  tokenListEl.innerHTML = listEmptyMsg();
   connect();
 
   setInterval(() => {
     document.querySelectorAll('.age-val').forEach(el => {
       const created = Number(el.dataset.created);
-      if (created) el.textContent = formatAge(Date.now() - created) + ' old';
+      if (created) el.textContent = formatAge(Date.now() - created);
     });
   }, 1000);
 </script>
